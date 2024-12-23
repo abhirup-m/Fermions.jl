@@ -562,3 +562,37 @@ function Dagger(
     return operator
 end
 export Dagger
+
+
+"""
+    VacuumState(basisStates)
+
+Returns the vacuum (completely unoccupied) state for the 
+
+# Examples
+```jldoctest
+julia> operator = [("++", [1, 2], 1.), ("+n", [3, 4], 2.)]
+2-element Vector{Tuple{String, Vector{Int64}, Float64}}:
+ ("++", [1, 2], 1.0)
+ ("+n", [3, 4], 2.0)
+
+julia> Dagger(operator)
+2-element Vector{Tuple{String, Vector{Int64}, Float64}}:
+ ("--", [2, 1], 1.0)
+ ("n-", [4, 3], 2.0)
+ ```
+"""
+function VacuumState(
+        basisStates::Vector{Dict{BitVector,Float64}};
+        tolerance::Float64=1e-14,
+    )
+    numSites = basisStates |> first |> keys |> first |> length
+    numberOperators = [("n", [i], 1.) for i in 1:numSites]
+    for state in basisStates
+        if GenCorrelation(state, numberOperators) < tolerance
+            return state
+        end
+    end
+    @assert false "Vacuum state not found!"
+end
+export VacuumState

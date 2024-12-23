@@ -40,3 +40,22 @@ function OTOC(
     return otoc
 end
 export OTOC
+
+
+function StateEvolution(
+        initState::Vector{ComplexF64}, 
+        hamiltonian::Matrix{Float64},
+        timeSteps::Vector{Float64},
+    )
+    stateEvolution = Vector{Complex}[initState]
+    for step in eachindex(timeSteps)[2:end]
+        deltaTime = timeSteps[step] - timeSteps[step-1]
+        newState = inv(I + 0.5im * deltaTime * hamiltonian) * (I - 0.5im * deltaTime * hamiltonian) * stateEvolution[end]
+        push!(stateEvolution, newState)
+    end
+    for (i, v) in enumerate(stateEvolution)
+        stateEvolution[i] = v/norm(v)
+    end
+    return stateEvolution
+end
+export StateEvolution

@@ -382,11 +382,11 @@ export Dispersion
 
 
 function J1J2Model(
-        J1byJ2::Float64,
+        J2J1Ratio::Float64,
         numSites::Int64
     )
-    J2 = 1.
-    J1 = J2 * J1byJ2
+    J1 = 1.
+    J2 = J1 * J2J1Ratio
     hamiltonian = Tuple{String, Vector{Int64}, Float64}[]
     for site in 1:numSites-1
         # J1 terms
@@ -409,3 +409,18 @@ function J1J2Model(
     end
     return hamiltonian
 end
+
+
+function CollatzModel(
+        numSites::Int64,
+    )
+    hamiltonian = Tuple{String, Vector{Int64}, Float64}[]
+    for site in 2:2:numSites
+        push!(hamiltonian, ("+-", [div(site, 2), site], 1.))
+    end
+    for site in 1:2:div(numSites-1, 3)
+        push!(hamiltonian, ("+-", [site * 3 + 1, site], 1.))
+    end
+    return hamiltonian
+end
+export CollatzModel
