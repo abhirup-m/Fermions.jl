@@ -409,6 +409,7 @@ function J1J2Model(
     end
     return hamiltonian
 end
+export J1J2Model
 
 
 function CollatzModel(
@@ -424,3 +425,23 @@ function CollatzModel(
     return hamiltonian
 end
 export CollatzModel
+
+
+function SSHModel(
+        hop_AB::Float64,
+        hop_BA::Float64,
+        numSitesPerSubl::Int64;
+        joinEnds::Bool=false,
+    )
+    hamiltonian = Tuple{String, Vector{Int64}, Float64}[]
+    for i in 1:(2*numSitesPerSubl-1)
+        hop = isodd(i) ? hop_AB : hop_BA
+        push!(hamiltonian, ("+-", [i, i + 1], -hop))
+        push!(hamiltonian, ("+-", [i + 1, i], -hop))
+    end
+    if joinEnds
+        push!(hamiltonian, ("+-", [2 * numSitesPerSubl, 1], -hop_BA))
+        push!(hamiltonian, ("+-", [1, 2 * numSitesPerSubl], -hop_BA))
+    end
+    return hamiltonian
+end
