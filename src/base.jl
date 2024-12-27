@@ -596,3 +596,21 @@ function VacuumState(
     @assert false "Vacuum state not found!"
 end
 export VacuumState
+
+
+function DoesCommute(
+        operatorLeft::Vector{Tuple{String,Vector{Int64},Float64}},
+        operatorRight::Vector{Tuple{String,Vector{Int64},Float64}},
+        basisStates::Vector{Dict{BitVector,Float64}};
+        tolerance=1e-15,
+    )
+    matrixLeft = OperatorMatrix(basisStates, operatorLeft)
+    matrixRight = OperatorMatrix(basisStates, operatorRight)
+    commutator = matrixLeft * matrixRight - matrixRight * matrixLeft
+    if commutator .|> abs |> maximum < tolerance
+        return true
+    else
+        return false
+    end
+end
+export DoesCommute
