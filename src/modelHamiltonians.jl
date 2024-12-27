@@ -428,20 +428,56 @@ export CollatzModel
 
 
 function SSHModel(
-        hop_AB::Float64,
-        hop_BA::Float64,
+        hopPair::NTuple{2, Float64},
         numSitesPerSubl::Int64;
         joinEnds::Bool=false,
     )
     hamiltonian = Tuple{String, Vector{Int64}, Float64}[]
     for i in 1:(2*numSitesPerSubl-1)
-        hop = isodd(i) ? hop_AB : hop_BA
+        hop = isodd(i) ? hopPair[1] : hopPair[2]
         push!(hamiltonian, ("+-", [i, i + 1], -hop))
         push!(hamiltonian, ("+-", [i + 1, i], -hop))
     end
     if joinEnds
-        push!(hamiltonian, ("+-", [2 * numSitesPerSubl, 1], -hop_BA))
-        push!(hamiltonian, ("+-", [1, 2 * numSitesPerSubl], -hop_BA))
+        push!(hamiltonian, ("+-", [2 * numSitesPerSubl, 1], -hopPair[2]))
+        push!(hamiltonian, ("+-", [1, 2 * numSitesPerSubl], -hopPair[2]))
     end
     return hamiltonian
 end
+export SSHModel
+
+
+function SSHModel(
+        hopPairX::NTuple{2, Float64},
+        hopPairY::NTuple{2, Float64},
+        numSitesPerSubl::NTuple{2, Int64};
+        joinEnds::NTuple{2, Bool}=(false, false),
+    )
+    hamiltonian = Tuple{String, Vector{Int64}, Float64}[]
+    for i in 1:2*numSitesPerSubl[2] # y
+        for j in 1:(2 * numSitesPerSubl[1] - 1) # x
+            hop = isodd(j) ? hopPairX[1] : hopPairX[2]
+            position = (i - 1) * 2 * numSitesPerSubl[1] + j
+            push!(hamiltonian, ("+-", [position, position + 1], -hop))
+            push!(hamiltonian, ("+-", [position + 1, position], -hop))
+        end
+        if joinEnds[1] && numSitesPerSubl[1] > 1
+            push!(hamiltonian, ("+-", [i * 2 * numSitesPerSubl[1], (i - 1) * 2 * numSitesPerSubl[1] + 1], -hopPairX[2]))
+            push!(hamiltonian, ("+-", [(i - 1) * 2 * numSitesPerSubl[1] + 1, i * 2 * numSitesPerSubl[1]], -hopPairX[2]))
+        end
+    end
+    for i in 1:2*numSitesPerSubl[1] # x
+        for j in 1:(2 * numSitesPerSubl[2] - 1) # y
+            hop = isodd(j) ? hopPairY[1] : hopPairY[2]
+            position = (j - 1) * 2 * numSitesPerSubl[1] + i
+            push!(hamiltonian, ("+-", [position, position + 2 * numSitesPerSubl[1]], -hop))
+            push!(hamiltonian, ("+-", [position + 2 * numSitesPerSubl[1], position], -hop))
+        end
+        if joinEnds[2] && numSitesPerSubl[2] > 1
+            push!(hamiltonian, ("+-", [2 * numSitesPerSubl[1] * (2 * numSitesPerSubl[2] - 1) + i, i], -hopPairY[2]))
+            push!(hamiltonian, ("+-", [i, 2 * numSitesPerSubl[1] * (2 * numSitesPerSubl[2] - 1) + i], -hopPairY[2]))
+        end
+    end
+    return hamiltonian
+end
+export SSHModel

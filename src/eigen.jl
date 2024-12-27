@@ -287,7 +287,6 @@ function BandStructure(
     count = 1
     while count ≤ length(eigenStates)
         degenerateSubspace = findall(Ei -> abs(Ei - eigenVals[count]) < tolerance, eigenVals)
-        println((count, degenerateSubspace, eigenVals[degenerateSubspace]))
         degenerateBasis = [eigenStates[i] for i in degenerateSubspace]
         if length(degenerateBasis) == 1
             flag, symmetryValue = IsEigenState(eigenStates[degenerateSubspace[1]], eigenOperator; tolerance=tolerance)
