@@ -80,11 +80,11 @@ Dict{BitVector, Float64} with 2 entries:
 ```
 """
 function TransformState(
-        vector::Vector{Float64},
+        vector::Union{Vector{ComplexF64}, Vector{Float64}},
         basisStates::Vector{Dict{BitVector,Float64}};
         tolerance::Float64=1e-16,
     )
-    transformedState = Dict{BitVector,Float64}()
+    transformedState = Dict{BitVector, vector |> eltype}()
     keysArr = keys.(basisStates)
     valuesArr = values.(basisStates)
     for (i, c_i) in enumerate(vector)
@@ -140,14 +140,17 @@ function Spectrum(
     basisStates::Vector{Dict{BitVector,Float64}};
     diagElements::Vector{Float64}=Float64[],
     tolerance::Float64=1e-14,
+    assumeHerm::Bool=true,
     )
     matrix = OperatorMatrix(basisStates, operator; tolerance=tolerance)
-    @assert maximum(abs.(matrix .- matrix')) < tolerance
+    if assumeHerm
+        @assert maximum(abs.(matrix .- matrix')) < tolerance
+    end
     if !isempty(diagElements)
         matrix += diagm(diagElements)
     end
 
-    eigenVals, eigenVecs = eigen(Hermitian(matrix))
+    eigenVals, eigenVecs = assumeHerm ? eigen(Hermitian(matrix)) : eigen(matrix)
     eigenStates = [TransformState(collect(vector), basisStates; tolerance=tolerance)
                    for vector in eachcol(eigenVecs)]
     return eigenVals, eigenStates
@@ -249,7 +252,7 @@ function Spectrum(
     classifiedBasis::Union{Dict{Tuple{Int64}, Vector{Dict{BitVector,Float64}}}, Dict{Tuple{Int64, Int64}, Vector{Dict{BitVector,Float64}}}};
     diagElements::Dict{}=Dict(),
     tolerance::Float64=1e-14,
-)
+    )
     if !isempty(diagElements)
         @assert all(x -> true, [length(E) == size(classifiedBasis[k])[1] for (k,E) in diagElements])
     end
@@ -266,3 +269,77 @@ function Spectrum(
     return classifiedEigvals, classifiedEigvecs
 end
 export Spectrum
+
+
+function BandStructure(
+        hamiltonian::Vector{Tuple{String,Vector{Int64},Float64}},
+        basisStates::Vector{Dict{BitVector,Float64}},
+        eigenOperator::Vector{Tuple{String,Vector{Int64},Float64}};
+        dimensionSymmetry::Int64=-1,
+        tolerance::Float64=1e-10
+    )
+    @assert DoesCommute(hamiltonian, eigenOperator, basisStates)
+    eigenVals, eigenStates = Spectrum(hamiltonian, basisStates)
+    if dimensionSymmetry < 0
+        dimensionSymmetry = length(eigenVals)
+    end
+    classifiedEnergies = Dict{Int64, Vector{Float64}}()
+    count = 1
+    while count ≤ length(eigenStates)
+        degenerateSubspace = findall(Ei -> abs(Ei - eigenVals[count]) < tolerance, eigenVals)
+        println((count, degenerateSubspace, eigenVals[degenerateSubspace]))
+        degenerateBasis = [eigenStates[i] for i in degenerateSubspace]
+        if length(degenerateBasis) == 1
+            flag, symmetryValue = IsEigenState(eigenStates[degenerateSubspace[1]], eigenOperator; tolerance=tolerance)
+            @assert flag eigenStates[degenerateSubspace[1]]
+            quantumNums = [trunc(Int, dimensionSymmetry * atan(imag(symmetryValue), real(symmetryValue)) / π)]
+        else
+            symmetryValues, _ = Spectrum(eigenOperator, degenerateBasis; assumeHerm=false)
+            quantumNums = trunc.(Int, dimensionSymmetry .* atan.(imag.(symmetryValues), real.(symmetryValues)) ./ π)
+        end
+        for quantumNum in quantumNums
+            if quantumNum in keys(classifiedEnergies)
+                push!(classifiedEnergies[quantumNum], eigenVals[count])
+            else
+                classifiedEnergies[quantumNum] = [eigenVals[count]]
+            end
+        end
+        count += length(degenerateSubspace)
+    end
+    return classifiedEnergies
+end
+export BandStructure
+
+
+function IsEigenState(
+        state::Dict{BitVector,Float64},
+        operator::Vector{Tuple{String,Vector{Int64},Float64}};
+        tolerance::Float64=1e-15,
+    )
+    @assert !isempty(state) 
+    pivotVal, pivotKey = findmax(state)
+    if pivotVal == 0
+        pivotVal, pivotKey = findmin(state)
+        @assert pivotVal ≠ 0
+    end
+    newState = ApplyOperator(operator, state)
+    if keys(newState) ≠ keys(state)
+        return false, 0.
+    end
+    if newState[pivotKey] == 0
+        if all(c -> abs(c) < tolerance, values(newState))
+            println("New state is all zero, hard to tell if eigenstate or simply the vacuum.")
+            return true, 0.
+        else
+            return false, 0.
+        end
+    else
+        eigenValue = newState[pivotKey] / state[pivotKey]
+        if all(k -> abs(eigenValue - newState[k] / state[k]) < tolerance, keys(state))
+            return true, eigenValue
+        else
+            return false, 0.
+        end
+    end
+end
+export IsEigenState
