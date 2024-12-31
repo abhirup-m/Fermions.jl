@@ -1,3 +1,5 @@
+using LinearAlgebra
+
 """
     ClassifyBasis(basisStates)
 
