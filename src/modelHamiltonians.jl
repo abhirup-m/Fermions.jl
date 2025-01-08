@@ -242,6 +242,54 @@ end
 export KondoModel
 
 
+function  SiamRealSpace(
+        hop_t::Float64,
+        numBathSites::Int64,
+        hybridisation::Float64,
+        impOnsite::Float64,
+        impCorr::Float64;
+        globalField::Float64=0.,
+        couplingTolerance::Float64=1e-15,
+    )
+    hamiltonian = Tuple{String, Vector{Int64}, Float64}[]
+
+    # intra-bath hopping
+    if abs(hop_t) > couplingTolerance
+        for site in 1:(numBathSites-1)
+            push!(hamiltonian, ("+-",  [1 + 2 * site, 3 + 2 * site], -hop_t)) # c^†_{j,up} c_{j+1,up}
+            push!(hamiltonian, ("+-",  [3 + 2 * site, 1 + 2 * site], -hop_t)) # c^†_{j+1,up} c_{j,up}
+            push!(hamiltonian, ("+-",  [2 + 2 * site, 4 + 2 * site], -hop_t)) # c^†_{j,dn} c_{j+1,dn}
+            push!(hamiltonian, ("+-",  [4 + 2 * site, 2 + 2 * site], -hop_t)) # c^†_{j+1,dn} c_{j,dn}
+        end
+    end
+
+    # hybridisation terms
+    if abs(hybridisation) > couplingTolerance
+        push!(hamiltonian, ("+-",  [1, 3], hybridisation)) # c^†_{d,up} c_{0,up}
+        push!(hamiltonian, ("+-",  [3, 1], hybridisation)) # c^†_{0,up} c_{d,up}
+        push!(hamiltonian, ("+-",  [2, 4], hybridisation)) # c^†_{d,dn} c_{0,dn}
+        push!(hamiltonian, ("+-",  [4, 2], hybridisation)) # c^†_{0,dn} c_{d,dn}
+    end
+
+    # impurity local terms
+    push!(hamiltonian, ("n",  [1], impOnsite)) # Ed nup
+    push!(hamiltonian, ("n",  [2], impOnsite)) # Ed ndown
+    push!(hamiltonian, ("nn",  [1, 2], impCorr)) # U nup ndown
+
+    # global magnetic field (to lift any trivial degeneracy)
+    if abs(globalField) > couplingTolerance
+        for site in 0:numBathSites
+            push!(hamiltonian, ("n",  [1 + 2 * site], globalField))
+            push!(hamiltonian, ("n",  [2 + 2 * site], -globalField))
+        end
+    end
+
+    @assert !isempty(hamiltonian) "Hamiltonian is empty!"
+    return hamiltonian
+end
+export SiamRealSpace
+
+
 function SiamKSpace(
         dispersion::Vector{Float64},
         hybridisation::Float64,
