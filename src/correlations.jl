@@ -359,7 +359,7 @@ function SpecFunc(
         println("Degeneracy = ", length(eigVals[degenerateManifold]), "; Range=[$(eigVals[degenerateManifold][1]), $(eigVals[degenerateManifold][end])]")
     end
 
-    @showprogress desc="$(broadFuncType)" for groundState in eigVecs[degenerateManifold]
+    @showprogress desc="$(broadFuncType)" enabled=!(silent) for groundState in eigVecs[degenerateManifold]
         excitationCreate = probes["create"] * groundState
         excitationDestroy = probes["destroy"] * groundState
         excitationCreateBra = groundState' * probes["create"]
