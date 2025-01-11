@@ -858,11 +858,16 @@ function IterSpecFunc(
         normEveryStep::Bool=false,
         silent::Bool=false,
         broadFuncType::String="lorentz",
+        returnEach::Bool=false,
     )
     @assert issetequal(keys(specFuncOperators), ["create", "destroy"])
     quantumNoReq = CombineRequirements(occReq, magzReq)
     excQuantumNoReq = CombineRequirements(excOccReq, excMagzReq)
     totalSpecFunc = zeros(size(freqValues)...)
+
+    if returnEach
+        specFuncMatrix = zeros(length(specFuncOperators["create"]), length(freqValues))
+    end
     
     for (i, savePath) in enumerate(savePaths[end-length(specFuncOperators["create"]):end-1])
         specFunc = zeros(size(freqValues)...)
@@ -898,9 +903,16 @@ function IterSpecFunc(
                             Dict(name => specFuncOperators[name][i] for name in keys(specFuncOperators)),
                             freqValues, standDev; silent=silent,
                             normalise=normEveryStep, degenTol=degenTol, broadFuncType=broadFuncType)
+        if returnEach
+            specFuncMatrix[i, :] .= specFunc
+        end
         totalSpecFunc .+= specFunc
     end
-    return totalSpecFunc
+    if returnEach
+        return totalSpecFunc, specFuncMatrix
+    else
+        return totalSpecFunc
+    end
 end
 export IterSpecFunc
 
