@@ -30,8 +30,8 @@ function KondoModel(
     # global magnetic field (to lift any trivial degeneracy)
     if abs(globalField) > couplingTolerance
         for site in 0:numBathSites
-            push!(hamiltonian, ("n",  [1 + 2 * site], globalField))
-            push!(hamiltonian, ("n",  [2 + 2 * site], -globalField))
+            push!(hamiltonian, ("n",  [1 + 2 * site], globalField/2))
+            push!(hamiltonian, ("n",  [2 + 2 * site], -globalField/2))
         end
     end
 
@@ -72,6 +72,7 @@ function KondoModel(
         dispersion::Vector{Float64},
         kondoJ::Float64;
         globalField::Float64=0.,
+        impurityField::Float64=0.,
         cavityIndices::Vector{Int64}=Int64[],
         couplingTolerance::Float64=1e-15,
     )
@@ -107,9 +108,15 @@ function KondoModel(
     # global magnetic field (to lift any trivial degeneracy)
     if abs(globalField) > couplingTolerance
         for site in 0:numBathSites
-            push!(hamiltonian, ("n",  [1 + 2 * site], globalField))
-            push!(hamiltonian, ("n",  [2 + 2 * site], -globalField))
+            push!(hamiltonian, ("n",  [1 + 2 * site], globalField/2))
+            push!(hamiltonian, ("n",  [2 + 2 * site], -globalField/2))
         end
+    end
+
+    # impurity magnetic field (to lift any trivial local degeneracy)
+    if abs(impurityField) > couplingTolerance
+        push!(hamiltonian, ("n",  [1], impurityField/2))
+        push!(hamiltonian, ("n",  [2], -impurityField/2))
     end
 
     @assert !isempty(hamiltonian) "Hamiltonian is empty!"
@@ -123,6 +130,7 @@ function KondoModel(
         dispersion::Vector{Float64},
         kondoJ::Matrix{Float64};
         globalField::Float64=0.,
+        impurityField::Float64=0.,
         couplingTolerance::Float64=1e-15,
         cavityIndices::Vector{Int64}=Int64[],
     )
@@ -161,9 +169,15 @@ function KondoModel(
     # global magnetic field (to lift any trivial degeneracy)
     if abs(globalField) > couplingTolerance
         for site in 0:numBathSites
-            push!(hamiltonian, ("n",  [1 + 2 * site], globalField))
-            push!(hamiltonian, ("n",  [2 + 2 * site], -globalField))
+            push!(hamiltonian, ("n",  [1 + 2 * site], globalField/2))
+            push!(hamiltonian, ("n",  [2 + 2 * site], -globalField/2))
         end
+    end
+
+    # impurity magnetic field (to lift any trivial local degeneracy)
+    if abs(impurityField) > couplingTolerance
+        push!(hamiltonian, ("n",  [1], impurityField/2))
+        push!(hamiltonian, ("n",  [2], -impurityField/2))
     end
 
     @assert !isempty(hamiltonian) "Hamiltonian is empty!"
@@ -179,6 +193,7 @@ function KondoModel(
         bathInt::Float64;
         bathIntLegs::Int64=4,
         globalField::Float64=0.,
+        impurityField::Float64=0.,
         couplingTolerance::Float64=1e-15,
         cavityIndices::Vector{Int64}=Int64[],
     )
@@ -214,6 +229,7 @@ function KondoModel(
         bathIntFunc::Function;
         bathIntLegs::Int64=4,
         globalField::Float64=0.,
+        impurityField::Float64=0.,
         couplingTolerance::Float64=1e-15,
         cavityIndices::Vector{Int64}=Int64[],
     )
@@ -221,7 +237,9 @@ function KondoModel(
 
     numBathSites = length(dispersion)
     hamiltonian = KondoModel(dispersion, kondoJ; globalField=globalField, 
-                             cavityIndices=cavityIndices, couplingTolerance=couplingTolerance)
+                             impurityField=impurityField, cavityIndices=cavityIndices, 
+                             couplingTolerance=couplingTolerance
+                            )
     for indices in Iterators.product(repeat([1:numBathSites], 4)...)
         bathIntVal = bathIntFunc([k_indices[i] for i in indices])
         if length(unique(indices)) > bathIntLegs || abs(bathIntVal) < couplingTolerance
@@ -279,8 +297,8 @@ function  SiamRealSpace(
     # global magnetic field (to lift any trivial degeneracy)
     if abs(globalField) > couplingTolerance
         for site in 0:numBathSites
-            push!(hamiltonian, ("n",  [1 + 2 * site], globalField))
-            push!(hamiltonian, ("n",  [2 + 2 * site], -globalField))
+            push!(hamiltonian, ("n",  [1 + 2 * site], globalField/2))
+            push!(hamiltonian, ("n",  [2 + 2 * site], -globalField/2))
         end
     end
 
@@ -331,8 +349,8 @@ function SiamKSpace(
     # global magnetic field (to lift any trivial degeneracy)
     if globalField ≠ 0
         for site in 0:numBathSites
-            push!(hamiltonian, ("n",  [1 + 2 * site], globalField))
-            push!(hamiltonian, ("n",  [2 + 2 * site], -globalField))
+            push!(hamiltonian, ("n",  [1 + 2 * site], globalField/2))
+            push!(hamiltonian, ("n",  [2 + 2 * site], -globalField/2))
         end
     end
 
@@ -347,6 +365,7 @@ function SiamKSpace(
         impOnsite::Float64,
         impCorr::Float64;
         globalField::Float64=0.,
+        impurityField::Float64=0.,
         cavityIndices::Vector{Int64}=Int64[],
         couplingTolerance::Float64=1e-15,
     )
@@ -382,9 +401,15 @@ function SiamKSpace(
     # global magnetic field (to lift any trivial degeneracy)
     if globalField ≠ 0
         for site in 0:numBathSites
-            push!(hamiltonian, ("n",  [1 + 2 * site], globalField))
-            push!(hamiltonian, ("n",  [2 + 2 * site], -globalField))
+            push!(hamiltonian, ("n",  [1 + 2 * site], globalField/2))
+            push!(hamiltonian, ("n",  [2 + 2 * site], -globalField/2))
         end
+    end
+
+    # impurity magnetic field (to lift any trivial local degeneracy)
+    if abs(impurityField) > couplingTolerance
+        push!(hamiltonian, ("n",  [1], impurityField/2))
+        push!(hamiltonian, ("n",  [2], -impurityField/2))
     end
 
     return hamiltonian
@@ -629,8 +654,8 @@ function KondoModel(
     # global magnetic field (to lift any trivial degeneracy)
     if abs(globalField) > couplingTolerance
         for site in 1:(1 + numBathSites * length(kondoJ))
-            push!(hamiltonian, ("n",  [2 * site - 1], globalField))
-            push!(hamiltonian, ("n",  [2 * site], -globalField))
+            push!(hamiltonian, ("n",  [2 * site - 1], globalField/2))
+            push!(hamiltonian, ("n",  [2 * site], -globalField/2))
         end
     end
 
