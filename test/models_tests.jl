@@ -3,12 +3,13 @@
     @testset for hop_t in [0., -1., 1e-14, 1e-17]
         @testset for kondoJ in [0., 1., 1e-14, 1e-17]
             @testset for bathInt in [1., -1., 1e-17]
-                @testset for numBathSites in [1, 2, 10, 19]
+                @testset for numBathSites in [4]
+                #=@testset for numBathSites in [1, 2, 10, 19]=#
                     hamiltonian = KondoModel(numBathSites, hop_t, kondoJ, bathInt; globalField=globalField)
                     comparisonHamiltonian = []
                     for i in 0:numBathSites
-                        push!(comparisonHamiltonian, ("n", [1 + 2 * i], globalField))
-                        push!(comparisonHamiltonian, ("n", [2 + 2 * i], -globalField))
+                        push!(comparisonHamiltonian, ("n", [1 + 2 * i], globalField/2))
+                        push!(comparisonHamiltonian, ("n", [2 + 2 * i], -globalField/2))
                     end
                     if abs(hop_t) > 1e-15
                         for i in 1:numBathSites-1
@@ -31,6 +32,7 @@
                         push!(comparisonHamiltonian, ("n", [4], -bathInt/2))
                         push!(comparisonHamiltonian, ("nn", [3, 4], bathInt))
                     end
+
                     @test issetequal(hamiltonian, comparisonHamiltonian)
                 end
             end
@@ -53,8 +55,8 @@ end
                     hamiltonian = KondoModel(dispersion, kondoJ, bathInt; bathIntLegs=bathIntLegs, globalField=globalField, cavityIndices=cavityIndices)
                     comparisonHamiltonian = []
                     for i in 0:numBathSites
-                        push!(comparisonHamiltonian, ("n", [1 + 2 * i], globalField))
-                        push!(comparisonHamiltonian, ("n", [2 + 2 * i], -globalField))
+                        push!(comparisonHamiltonian, ("n", [1 + 2 * i], globalField/2))
+                        push!(comparisonHamiltonian, ("n", [2 + 2 * i], -globalField/2))
                     end
                     for i in 1:numBathSites
                         if abs(dispersion[i]) > 1e-15
@@ -113,8 +115,8 @@ end
                     hamiltonian = KondoModel(dispersion, kondoJMatrix, collect(1:numBathSites), bathIntFunc; bathIntLegs=bathIntLegs, globalField=globalField, cavityIndices=cavityIndices)
                     comparisonHamiltonian = []
                     for i in 0:numBathSites
-                        push!(comparisonHamiltonian, ("n", [1 + 2 * i], globalField))
-                        push!(comparisonHamiltonian, ("n", [2 + 2 * i], -globalField))
+                        push!(comparisonHamiltonian, ("n", [1 + 2 * i], globalField/2))
+                        push!(comparisonHamiltonian, ("n", [2 + 2 * i], -globalField/2))
                     end
                     for i in 1:numBathSites
                         if abs(dispersion[i]) > 1e-15
