@@ -423,12 +423,13 @@ function IterDiag(
     # if there are correlations, add them to the set of
     # operators that must be created and updated
     for (name, correlationDef) in correlationDefDict
-        correlationMaxMember = maximum([maximum(members) for (_, members, _) in correlationDef])
-        corrDefFlow = [ifelse(correlationMaxMember ∈ newSites, correlationDef, eltype(correlationDef)[]) for newSites in newSitesFlow]
-
-        corrCreate, corrBasket = UpdateRequirements(corrDefFlow, newSitesFlow)
+        #=correlationMaxMember = maximum([maximum(members) for (_, members, _) in correlationDef])=#
+        #=corrDefFlow = [ifelse(correlationMaxMember ∈ newSites, correlationDef, eltype(correlationDef)[]) for newSites in newSitesFlow]=#
+        #==#
+        corrCreate, corrBasket = UpdateRequirements(correlationDef, newSitesFlow)
         create = [[c1; c2] for (c1, c2) in zip(create, corrCreate)]
         basket = [[c1; c2] for (c1, c2) in zip(basket, corrBasket)]
+
     end
 
     # create the first batch of operators
@@ -998,7 +999,7 @@ function UpdateRequirements(
         # drop any duplicates that might have been added
         toRetain[step] = unique(toRetain[step])
     end
-    return toCreate, toRetain, newSitesFlow
+    return toCreate, toRetain
 end
 export UpdateRequirements
 
@@ -1019,8 +1020,9 @@ function UpdateRequirements(
         push!(newSitesFlow, newSites)
         append!(currentSites, newSites)
     end
+    create, basket = UpdateRequirements(hamltFlow, newSitesFlow)
 
-    return UpdateRequirements(hamltFlow, newSitesFlow)
+    return create, basket, newSitesFlow
 end
 export UpdateRequirements
 

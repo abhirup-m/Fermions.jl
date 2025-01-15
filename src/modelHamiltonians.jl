@@ -399,7 +399,7 @@ function SiamKSpace(
     end
 
     # global magnetic field (to lift any trivial degeneracy)
-    if globalField ≠ 0
+    if abs(globalField) > couplingTolerance
         for site in 0:numBathSites
             push!(hamiltonian, ("n",  [1 + 2 * site], globalField/2))
             push!(hamiltonian, ("n",  [2 + 2 * site], -globalField/2))
