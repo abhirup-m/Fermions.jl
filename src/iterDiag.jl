@@ -848,7 +848,7 @@ export IterDiag
 
 function IterSpecFunc(
         savePaths::Vector{String},
-        specFuncOperators::Dict{String, Vector{Matrix{Float64}}},
+        specFuncOperators::Vector{Matrix{Float64}},
         freqValues::Vector{Float64},
         standDev::Union{Vector{Float64}, Float64};
         degenTol::Float64=0.,
@@ -861,16 +861,15 @@ function IterSpecFunc(
         broadFuncType::String="lorentz",
         returnEach::Bool=false,
     )
-    @assert issetequal(keys(specFuncOperators), ["create", "destroy"])
     quantumNoReq = CombineRequirements(occReq, magzReq)
     excQuantumNoReq = CombineRequirements(excOccReq, excMagzReq)
     totalSpecFunc = zeros(size(freqValues)...)
 
     if returnEach
-        specFuncMatrix = zeros(length(specFuncOperators["create"]), length(freqValues))
+        specFuncMatrix = zeros(length(specFuncOperators), length(freqValues))
     end
     
-    for (i, savePath) in enumerate(savePaths[end-length(specFuncOperators["create"]):end-1])
+    for (i, savePath) in enumerate(savePaths[end-length(specFuncOperators):end-1])
         specFunc = zeros(size(freqValues)...)
         data = deserialize(savePath)
         eigVecs = [collect(col) for col in eachcol(data["basis"])]
@@ -900,10 +899,12 @@ function IterSpecFunc(
             minimalEigVals = eigVals[allowedIndices]
             @assert abs(groundStateEnergy - minimum(minimalEigVals)) < 1e-10
         end
+        operator = Dict{String, Matrix{Float64}}("create" => specFuncOperators[i], "destroy" => specFuncOperators[i]')
         specFunc = SpecFunc(minimalEigVals, minimalEigVecs, 
-                            Dict(name => specFuncOperators[name][i] for name in keys(specFuncOperators)),
-                            freqValues, standDev; silent=silent,
-                            normalise=normEveryStep, degenTol=degenTol, broadFuncType=broadFuncType)
+                            operator, freqValues, standDev; 
+                            silent=silent, normalise=normEveryStep, 
+                            degenTol=degenTol, broadFuncType=broadFuncType
+                           )
         if returnEach
             specFuncMatrix[i, :] .= specFunc
         end

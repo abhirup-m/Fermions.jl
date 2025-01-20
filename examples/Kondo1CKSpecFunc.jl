@@ -1,4 +1,4 @@
-using fermions, CairoMakie, Measures, ProgressMeter
+using Fermions, CairoMakie, Measures, ProgressMeter
 #=include("../src/base.jl")=#
 include("../src/correlations.jl")
 include("../src/iterDiag.jl")
@@ -32,12 +32,15 @@ function IterResults(hamFlow, totalSites::Int64)
                                  specFuncDefDict=specFuncDefDict,
                                  occReq=(x,N)->abs(x-div(N,2)) ≤ 4
                                 )
-    totalSpecFunc = IterSpecFunc(savePaths, specFuncOperators, freqValues, standDev;
-                                       #=occReq=(x,N) -> x == div(N,2),=#
-                                       #=excOccReq=(x,N) -> abs(x - div(N,2)) == 1,=#
-                                       #=symmetrise=true,=#
-                           )
-    return totalSpecFunc
+    specFuncResults = Dict()
+    for (name, operators) in specFuncOperators
+        specFuncResults[name] = IterSpecFunc(savePaths, operators, freqValues, standDev;
+                                           #=occReq=(x,N) -> x == div(N,2),=#
+                                           #=excOccReq=(x,N) -> abs(x - div(N,2)) == 1,=#
+                                           #=symmetrise=true,=#
+                               )
+    end
+    return specFuncResults
 end
 
 function ExactResults(hamFlow, totalSites::Int64)
@@ -74,7 +77,8 @@ function BenchMark(
             kondoModel = KondoModel(totalSites, hop_t, kondoJ, globalField=1e-5)
             hamFlow = MinceHamiltonian(kondoModel, collect(2 * (1 + initSites):2 * addPerStep:2 * (1 + totalSites)))
             specFuncIter = IterResults(hamFlow, totalSites)
-            specFuncExact = ExactResults(hamFlow, totalSites)
+            println(specFuncIter)
+            #=specFuncExact = ExactResults(hamFlow, totalSites)=#
             lines!(axes[axisIndex], freqValues[freqValues .≥ 0], specFuncIter[freqValues .≥ 0], label=L"ID $J=%$(kondoJ)$")
             scatter!(axes[axisIndex], freqValues[freqValues .≥ 0], specFuncExact[freqValues .≥ 0], linestyle=:dash, label=L"ED $J=%$(kondoJ)$")
             relError = abs.(specFuncIter .- specFuncExact) ./ specFuncExact
@@ -92,7 +96,7 @@ function LargerSystem(
         hop_t::Float64
     )
     f = Figure()
-    totalSites = 29
+    totalSites = 9
     ax = Axis(f[1,1], xlabel=L"\omega",ylabel=L"A(\omega)", title=L"\eta=%$(standDev), L=%$(totalSites+1), t=%$(hop_t)", yscale=log10)
     for kondoJ in kondoJVals
         kondoModel = KondoModel(totalSites, hop_t, kondoJ, globalField=-1e-5)
@@ -105,8 +109,7 @@ function LargerSystem(
     save("specFunc-Kondo-real.pdf", f)
 end
 
-#=specFuncDefDict = Dict("create" => [("+-+", [1,2,4], 0.5)], "destroy" => [("+--", [2,1,4], 0.5)])=#
-specFuncDefDict = Dict("create" => [("+-+", [2,1,3], 0.5), ("+-+", [1,2,4], 0.5)], "destroy" => [("+--", [1,2,3], 0.5), ("+--", [2,1,4], 0.5)])
+specFuncDefDict = Dict("Add" => [("+-+", [2,1,3], 0.5), ("+-+", [1,2,4], 0.5)], "A0" => [("+", [3], 1.)])
 initSites = 1
 maxSize = 1500
 hop_t = 0.01
