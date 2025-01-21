@@ -860,6 +860,7 @@ function IterSpecFunc(
         silent::Bool=false,
         broadFuncType::String="lorentz",
         returnEach::Bool=false,
+        excludeLevels::Function=x -> true,
     )
     quantumNoReq = CombineRequirements(occReq, magzReq)
     excQuantumNoReq = CombineRequirements(excOccReq, excMagzReq)
@@ -903,7 +904,8 @@ function IterSpecFunc(
         specFunc = SpecFunc(minimalEigVals, minimalEigVecs, 
                             operator, freqValues, standDev; 
                             silent=silent, normalise=normEveryStep, 
-                            degenTol=degenTol, broadFuncType=broadFuncType
+                            degenTol=degenTol, broadFuncType=broadFuncType,
+                            excludeLevels=excludeLevels,
                            )
         if returnEach
             specFuncMatrix[i, :] .= specFunc

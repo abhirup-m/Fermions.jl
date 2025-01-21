@@ -343,6 +343,7 @@ function SpecFunc(
     normalise::Bool=true,
     silent::Bool=false,
     broadFuncType::String="lorentz",
+    excludeLevels::Function=x -> false,
     )
 
     @assert length(eigVals) == length(eigVecs)
@@ -365,6 +366,9 @@ function SpecFunc(
         excitationCreateBra = groundState' * probes["create"]
         excitationDestroyBra = groundState' * probes["destroy"]
         for index in eachindex(eigVals)
+            if excludeLevels(eigVals[index] - energyGs)
+                continue
+            end
             excitedState = eigVecs[index]
             spectralWeights = [(excitationDestroyBra * excitedState) * (excitedState' * excitationCreate),
                                (excitedState' * excitationDestroy) * (excitationCreateBra * excitedState)

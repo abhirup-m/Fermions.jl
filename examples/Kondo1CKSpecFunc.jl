@@ -44,22 +44,22 @@ function IterResults(hamFlow, totalSites::Int64)
 end
 
 function ExactResults(hamFlow, totalSites::Int64)
-    totalSpecFunc = zeros(length(freqValues))
-    for (i, num) in enumerate(initSites:addPerStep:totalSites)
-        basis = BasisStates(2 * (1 + num); 
-                            localCriteria=x->x[1]+x[2]==1,
-                            totOccReq=[num, 1 + num, 2 + num]
-                           )
-        fullHam = vcat(hamFlow[1:i]...)
-        E, X = Spectrum(fullHam, basis)
-        specFunc = SpecFunc(E, X,
-                            specFuncDefDict,
-                            freqValues, basis, standDev, 
-                            ['N'], 
-                            (1+num,);
-                            #=symmetrise=true,=#
-                           )
-        totalSpecFunc .+= specFunc
+    totalSpecFunc = Dict(name => zeros(length(freqValues)) for name in keys(specFuncDefDictExact))
+    for (name, val) in specFuncDefDictExact
+        for (i, num) in enumerate(initSites:addPerStep:totalSites)
+            basis = BasisStates(2 * (1 + num); 
+                                localCriteria=x->x[1]+x[2]==1,
+                                totOccReq=[num, 1 + num, 2 + num]
+                               )
+            fullHam = vcat(hamFlow[1:i]...)
+            E, X = Spectrum(fullHam, basis)
+            specFunc = SpecFunc(E, X, val, freqValues, 
+                                basis, standDev, ['N'], 
+                                (1+num,);
+                                #=symmetrise=true,=#
+                               )
+            totalSpecFunc[name] .+= specFunc
+        end
     end
     return totalSpecFunc
 end
@@ -76,12 +76,13 @@ function BenchMark(
         for kondoJ in kondoJVals
             kondoModel = KondoModel(totalSites, hop_t, kondoJ, globalField=1e-5)
             hamFlow = MinceHamiltonian(kondoModel, collect(2 * (1 + initSites):2 * addPerStep:2 * (1 + totalSites)))
-            specFuncIter = IterResults(hamFlow, totalSites)
+            @time specFuncIter = IterResults(hamFlow, totalSites)
             println(specFuncIter)
-            #=specFuncExact = ExactResults(hamFlow, totalSites)=#
-            lines!(axes[axisIndex], freqValues[freqValues .≥ 0], specFuncIter[freqValues .≥ 0], label=L"ID $J=%$(kondoJ)$")
-            scatter!(axes[axisIndex], freqValues[freqValues .≥ 0], specFuncExact[freqValues .≥ 0], linestyle=:dash, label=L"ED $J=%$(kondoJ)$")
-            relError = abs.(specFuncIter .- specFuncExact) ./ specFuncExact
+            specFuncExact = ExactResults(hamFlow, totalSites)
+            println(specFuncExact["Add"])
+            lines!(axes[axisIndex], freqValues[freqValues .≥ 0], specFuncIter["Add"][freqValues .≥ 0], label=L"ID $J=%$(kondoJ)$")
+            scatter!(axes[axisIndex], freqValues[freqValues .≥ 0], specFuncExact["Add"][freqValues .≥ 0], linestyle=:dash, label=L"ED $J=%$(kondoJ)$")
+            relError = abs.(specFuncIter["Add"] .- specFuncExact["Add"]) ./ specFuncExact["Add"]
             lines!(errorAxes[axisIndex], relError)
         end
         axislegend(axes[axisIndex])
@@ -96,7 +97,7 @@ function LargerSystem(
         hop_t::Float64
     )
     f = Figure()
-    totalSites = 9
+    totalSites = 19
     ax = Axis(f[1,1], xlabel=L"\omega",ylabel=L"A(\omega)", title=L"\eta=%$(standDev), L=%$(totalSites+1), t=%$(hop_t)", yscale=log10)
     for kondoJ in kondoJVals
         kondoModel = KondoModel(totalSites, hop_t, kondoJ, globalField=-1e-5)
@@ -110,6 +111,9 @@ function LargerSystem(
 end
 
 specFuncDefDict = Dict("Add" => [("+-+", [2,1,3], 0.5), ("+-+", [1,2,4], 0.5)], "A0" => [("+", [3], 1.)])
+specFuncDefDictExact = Dict("Add" => Dict("create" => [("+-+", [2,1,3], 0.5), ("+-+", [1,2,4], 0.5)], "destroy" => [("-+-", [3, 1, 2], 0.5), ("-+-", [4, 2, 1], 0.5)]),
+                            "A0" => Dict("create" => [("+", [3], 1.)], "destroy" => [("-", [3], 1.)]),
+                           )
 initSites = 1
 maxSize = 1500
 hop_t = 0.01
