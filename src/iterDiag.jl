@@ -860,18 +860,50 @@ function IterSpecFunc(
         silent::Bool=false,
         broadFuncType::String="lorentz",
         returnEach::Bool=false,
-        excludeLevels::Function=x -> true,
+        excludeLevels::Function=x -> false,
+        normalise::Bool=true,
     )
+    specCoeffsComplete = IterSpectralCoeffs(savePaths, specFuncOperators;
+                                            degenTol=degenTol, occReq=occReq,
+                                            magzReq=magzReq, excOccReq=excOccReq,
+                                            excMagzReq=excMagzReq, 
+                                            excludeLevels=excludeLevels
+                                           )
+    specFuncMatrix = zeros(length(specFuncOperators), length(freqValues))
+    for (index, specCoeffs) in enumerate(specCoeffsComplete)
+        specFuncMatrix[index, :] .= SpecFunc(specCoeffs, freqValues, standDev;
+                                            normalise=normalise, silent=silent, 
+                                            broadFuncType=broadFuncType
+                                           )
+    end
+    totalSpecFunc = sum(specFuncMatrix, dims=1) |> vec
+    @assert totalSpecFunc |> length == freqValues |> length
+    if returnEach
+        return totalSpecFunc, specFuncMatrix
+    else
+        return totalSpecFunc
+    end
+end
+export IterSpecFunc
+
+
+function IterSpectralCoeffs(
+        savePaths::Vector{String},
+        specFuncOperators::Vector{Matrix{Float64}};
+        degenTol::Float64=0.,
+        occReq::Union{Nothing,Function}=nothing,
+        magzReq::Union{Nothing,Function}=nothing,
+        excOccReq::Union{Nothing,Function}=nothing,
+        excMagzReq::Union{Nothing,Function}=nothing,
+        excludeLevels::Function=x -> false,
+    )
+
     quantumNoReq = CombineRequirements(occReq, magzReq)
     excQuantumNoReq = CombineRequirements(excOccReq, excMagzReq)
-    totalSpecFunc = zeros(size(freqValues)...)
 
-    if returnEach
-        specFuncMatrix = zeros(length(specFuncOperators), length(freqValues))
-    end
-    
-    for (i, savePath) in enumerate(savePaths[end-length(specFuncOperators):end-1])
-        specFunc = zeros(size(freqValues)...)
+    specCoeffsComplete = Vector{NTuple{2, Float64}}[]
+    for index in length(savePaths)-length(specFuncOperators):length(savePaths)-1
+        savePath = savePaths[index]
         data = deserialize(savePath)
         eigVecs = [collect(col) for col in eachcol(data["basis"])]
         eigVals = data["eigVals"]
@@ -900,25 +932,16 @@ function IterSpecFunc(
             minimalEigVals = eigVals[allowedIndices]
             @assert abs(groundStateEnergy - minimum(minimalEigVals)) < 1e-10
         end
-        operator = Dict{String, Matrix{Float64}}("create" => specFuncOperators[i], "destroy" => specFuncOperators[i]')
-        specFunc = SpecFunc(minimalEigVals, minimalEigVecs, 
-                            operator, freqValues, standDev; 
-                            silent=silent, normalise=normEveryStep, 
-                            degenTol=degenTol, broadFuncType=broadFuncType,
-                            excludeLevels=excludeLevels,
-                           )
-        if returnEach
-            specFuncMatrix[i, :] .= specFunc
-        end
-        totalSpecFunc .+= specFunc
+
+        operator = Dict{String, Matrix{Float64}}("create" => specFuncOperators[index], "destroy" => specFuncOperators[index]')
+        specCoeffs = SpectralCoefficients(minimalEigVecs, minimalEigVals, operator, 
+                                          excludeLevels, degenTol; silent=true,
+                                         )
+        push!(specCoeffsComplete, specCoeffs)
     end
-    if returnEach
-        return totalSpecFunc, specFuncMatrix
-    else
-        return totalSpecFunc
-    end
+    return specCoeffsComplete
 end
-export IterSpecFunc
+export IterSpectralCoeffs
 
 
 """

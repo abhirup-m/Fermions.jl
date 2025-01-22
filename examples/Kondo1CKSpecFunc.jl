@@ -1,7 +1,7 @@
-using Fermions, CairoMakie, Measures, ProgressMeter
+@everywhere using Fermions, CairoMakie, Measures, ProgressMeter
 #=include("../src/base.jl")=#
-include("../src/correlations.jl")
-include("../src/iterDiag.jl")
+@everywhere include("../src/correlations.jl")
+@everywhere include("../src/iterDiag.jl")
 
 set_theme!(merge(theme_light(), theme_latexfonts()))
 update_theme!(
@@ -34,11 +34,12 @@ function IterResults(hamFlow, totalSites::Int64)
                                 )
     specFuncResults = Dict()
     for (name, operators) in specFuncOperators
-        specFuncResults[name] = IterSpecFunc(savePaths, operators, freqValues, standDev;
+        @time specFuncResults[name] = IterSpecFunc(savePaths, operators, freqValues, standDev;
+                                             silent=true,
                                            #=occReq=(x,N) -> x == div(N,2),=#
                                            #=excOccReq=(x,N) -> abs(x - div(N,2)) == 1,=#
                                            #=symmetrise=true,=#
-                               )
+                                           )
     end
     return specFuncResults
 end
@@ -55,7 +56,7 @@ function ExactResults(hamFlow, totalSites::Int64)
             E, X = Spectrum(fullHam, basis)
             specFunc = SpecFunc(E, X, val, freqValues, 
                                 basis, standDev, ['N'], 
-                                (1+num,);
+                                (1+num,); silent=true,
                                 #=symmetrise=true,=#
                                )
             totalSpecFunc[name] .+= specFunc
@@ -72,16 +73,14 @@ function BenchMark(
     axes = [Axis(f[i, 1], xlabel=L"\omega",ylabel=L"A(\omega)") for i in 1:2]
     errorAxes = [Axis(f[i, 1], width=Relative(0.4), height=Relative(0.4), halign=0.2, valign=0.85, yticklabelsize=20, xticklabelsvisible=false) for i in 1:2]
     axisIndex = 1
-    for totalSites in [5, 6]
+    for totalSites in [4, 5]
         for kondoJ in kondoJVals
             kondoModel = KondoModel(totalSites, hop_t, kondoJ, globalField=1e-5)
             hamFlow = MinceHamiltonian(kondoModel, collect(2 * (1 + initSites):2 * addPerStep:2 * (1 + totalSites)))
-            @time specFuncIter = IterResults(hamFlow, totalSites)
-            println(specFuncIter)
+            specFuncIter = IterResults(hamFlow, totalSites)
             specFuncExact = ExactResults(hamFlow, totalSites)
-            println(specFuncExact["Add"])
             lines!(axes[axisIndex], freqValues[freqValues .≥ 0], specFuncIter["Add"][freqValues .≥ 0], label=L"ID $J=%$(kondoJ)$")
-            scatter!(axes[axisIndex], freqValues[freqValues .≥ 0], specFuncExact["Add"][freqValues .≥ 0], linestyle=:dash, label=L"ED $J=%$(kondoJ)$")
+            scatter!(axes[axisIndex], freqValues[freqValues .≥ 0], specFuncExact["Add"][freqValues .≥ 0], label=L"ED $J=%$(kondoJ)$")
             relError = abs.(specFuncIter["Add"] .- specFuncExact["Add"]) ./ specFuncExact["Add"]
             lines!(errorAxes[axisIndex], relError)
         end
@@ -97,13 +96,14 @@ function LargerSystem(
         hop_t::Float64
     )
     f = Figure()
-    totalSites = 19
+    totalSites = 21
     ax = Axis(f[1,1], xlabel=L"\omega",ylabel=L"A(\omega)", title=L"\eta=%$(standDev), L=%$(totalSites+1), t=%$(hop_t)", yscale=log10)
     for kondoJ in kondoJVals
         kondoModel = KondoModel(totalSites, hop_t, kondoJ, globalField=-1e-5)
         hamFlow = MinceHamiltonian(kondoModel, collect(2 * (1 + initSites):2 * addPerStep:2 * (1 + totalSites)))
-        specFuncIter = IterResults(hamFlow, totalSites)
+        specFuncIter = IterResults(hamFlow, totalSites)["Add"]
         specFuncIter ./= sum(specFuncIter .* (maximum(freqValues) - minimum(freqValues[1])) / (length(freqValues) - 1))
+        
         scatterlines!(ax, freqValues, 1e-5 .+ specFuncIter, label=L"$J=%$(kondoJ)$")
     end
     axislegend(ax)
@@ -115,12 +115,12 @@ specFuncDefDictExact = Dict("Add" => Dict("create" => [("+-+", [2,1,3], 0.5), ("
                             "A0" => Dict("create" => [("+", [3], 1.)], "destroy" => [("-", [3], 1.)]),
                            )
 initSites = 1
-maxSize = 1500
+maxSize = 1000
 hop_t = 0.01
 addPerStep = 1
 standDev = 0.02
 freqValues = collect(0:0.01:2.)
-BenchMark([1., 0.], hop_t)
+#=BenchMark([1., 0.], hop_t)=#
 
 freqValues = collect(-2:0.005:2.)
 LargerSystem([1., 0.5, 0.], hop_t)

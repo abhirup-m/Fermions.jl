@@ -328,6 +328,141 @@ end
 export ThermalAverage
 
 
+function SpectralCoefficients(
+        eigVecs::Vector{Vector{Float64}},
+        eigVals::Vector{Float64},
+        probes::Dict{String,Matrix{Float64}},
+        excludeLevels::Function,
+        degenTol::Float64;
+        silent::Bool=false,
+    )
+    energyGs = minimum(eigVals)
+    degenerateManifold = eigVals .≤ energyGs + degenTol
+
+    if !silent
+        println("Degeneracy = ", length(eigVals[degenerateManifold]), "; Range=[$(eigVals[degenerateManifold][1]), $(eigVals[degenerateManifold][end])]")
+    end
+    spectralCoefficients = NTuple{2, Float64}[]
+    @showprogress for groundState in eigVecs[degenerateManifold]
+        excitationCreate = probes["create"] * groundState
+        excitationDestroy = probes["destroy"] * groundState
+        excitationCreateBra = groundState' * probes["create"]
+        excitationDestroyBra = groundState' * probes["destroy"]
+        for index in eachindex(eigVals)
+            if excludeLevels(eigVals[index] - energyGs)
+                continue
+            end
+            excitedState = eigVecs[index]
+            spectralWeights = [(excitationDestroyBra * excitedState) * (excitedState' * excitationCreate),
+                               (excitedState' * excitationDestroy) * (excitationCreateBra * excitedState)
+                              ]
+            push!(spectralCoefficients, (spectralWeights[1], eigVals[index] - energyGs))
+            push!(spectralCoefficients, (spectralWeights[2], -eigVals[index] + energyGs))
+        end
+    end
+    return spectralCoefficients
+end
+export SpectralCoefficients
+
+
+function Normalise(
+        specFunc::Vector{Float64},
+        freqValues::Vector{Float64}, 
+        normalise::Bool,
+    )
+    if normalise
+        areaSpecFunc = sum(specFunc .* (maximum(freqValues) - minimum(freqValues[1])) / (length(freqValues) - 1))
+        if areaSpecFunc > 1e-10
+            return specFunc ./ areaSpecFunc
+        end
+    end
+    return specFunc
+end
+export Normalise
+
+
+function SpecFuncVariational(
+        spectralCoefficients::Vector{Vector{NTuple{2, Float64}}},
+        freqValues::Vector{Float64}, 
+        targetHeight::Float64, 
+        allowedRelError::Float64;
+        standDevGuess::Float64=0.1,
+        degenTol::Float64=0.,
+        normalise::Bool=false,
+        silent::Bool=false,
+        broadFuncType::String="lorentz",
+        fixedContrib::Union{Nothing,Vector{Vector{Float64}}}=nothing,
+        maxIter::Int64=30,
+    )
+    totalFixedContrib = ifelse(isnothing(fixedContrib), nothing, sum(fixedContrib))
+        
+    function RootFunction(standDev)
+        
+        specFunc = sum([SpecFunc(coeffs, freqValues, standDev;
+                                 normalise=normalise, silent=silent,
+                                 broadFuncType=broadFuncType
+                                )
+                        for coeffs in spectralCoefficients]
+                      )
+        if !isnothing(totalFixedContrib)
+            specFunc .+= totalFixedContrib
+        end
+        specFunc = Normalise(specFunc, freqValues, true)
+        return specFunc
+    end
+
+    specFunc = RootFunction(standDevGuess)
+
+    if targetHeight == 0
+        return specFunc, standDevGuess
+    end
+
+    error = specFunc[freqValues .≥ 0][1] / targetHeight - 1.
+    step = 0
+    while abs(error) ≥ allowedRelError && step ≤ maxIter
+        step += 1
+        if error > 0
+            standDevGuess *= (1 + abs(error))
+        else
+            standDevGuess /= (1 + abs(error))
+        end
+        specFunc = RootFunction(standDevGuess)
+        error = specFunc[freqValues .≥ 0][1] / targetHeight - 1.
+    end
+
+    if abs(error) < allowedRelError
+        println("Converged in $(step) runs: η=$(standDevGuess)")
+    else
+        println("Failed to converge: error=$(abs(error))")
+    end
+    return (specFunc, standDevGuess)
+end
+export SpecFuncVariational
+
+
+function SpecFunc(
+        spectralCoefficients::Vector{NTuple{2, Float64}},
+        freqValues::Vector{Float64},
+        standDev::Union{Vector{Float64}, Float64};
+        normalise::Bool=true,
+        silent::Bool=false,
+        broadFuncType::String="lorentz",
+    )
+    @assert broadFuncType ∈ ("lorentz", "gauss")
+    @assert issorted(freqValues)
+
+    broadeningFunc(x, standDev) = ifelse(broadFuncType=="lorentz", standDev ./ (x .^ 2 .+ standDev .^ 2), exp.(-0.5 .* ((x ./ standDev).^2)) ./ (standDev .* ((2π)^0.5)))
+    specFunc = 0 .* freqValues
+    for (coeff, polePosition) in spectralCoefficients
+            specFunc .+= coeff * broadeningFunc(freqValues .- polePosition, standDev)
+    end
+
+    specFunc = Normalise(specFunc, freqValues, normalise)
+    return specFunc
+end
+export SpecFunc
+
+
 """
     SpecFunc(eigVals, eigVecs, probe, freqValues, standDev)
 
@@ -347,43 +482,19 @@ function SpecFunc(
     )
 
     @assert length(eigVals) == length(eigVecs)
-    @assert broadFuncType ∈ ("lorentz", "gauss")
-    @assert issorted(freqValues)
 
-    broadeningFunc(x, standDev) = ifelse(broadFuncType=="lorentz", standDev ./ (x .^ 2 .+ standDev .^ 2), exp.(-0.5 .* ((x ./ standDev).^2)) ./ (standDev .* ((2π)^0.5)))
+    spectralCoefficients = SpectralCoefficients(eigVecs, eigVals, probes, excludeLevels,
+                                                degenTol; silent=silent
+                                               )
 
-    energyGs = minimum(eigVals)
-    specFunc = 0 .* freqValues
-
-    degenerateManifold = eigVals .≤ energyGs + degenTol
-    if !silent
-        println("Degeneracy = ", length(eigVals[degenerateManifold]), "; Range=[$(eigVals[degenerateManifold][1]), $(eigVals[degenerateManifold][end])]")
-    end
-
-    @showprogress desc="$(broadFuncType)" enabled=!(silent) for groundState in eigVecs[degenerateManifold]
-        excitationCreate = probes["create"] * groundState
-        excitationDestroy = probes["destroy"] * groundState
-        excitationCreateBra = groundState' * probes["create"]
-        excitationDestroyBra = groundState' * probes["destroy"]
-        for index in eachindex(eigVals)
-            if excludeLevels(eigVals[index] - energyGs)
-                continue
-            end
-            excitedState = eigVecs[index]
-            spectralWeights = [(excitationDestroyBra * excitedState) * (excitedState' * excitationCreate),
-                               (excitedState' * excitationDestroy) * (excitationCreateBra * excitedState)
-                              ]
-            specFunc .+= spectralWeights[1] * broadeningFunc(freqValues .+ energyGs .- eigVals[index], standDev)
-            specFunc .+= spectralWeights[2] * broadeningFunc(freqValues .- energyGs .+ eigVals[index], standDev)
-        end
-    end
-    areaSpecFunc = sum(specFunc .* (maximum(freqValues) - minimum(freqValues[1])) / (length(freqValues) - 1))
-    if areaSpecFunc > 1e-10 && normalise
-        specFunc = specFunc ./ areaSpecFunc
-    end
+    specFunc = SpecFunc(spectralCoefficients, freqValues, standDev; 
+                        normalise=normalise, broadFuncType=broadFuncType, 
+                        silent=silent)
     return specFunc
 end
 export SpecFunc
+
+
 
 
 """
