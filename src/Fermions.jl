@@ -1,6 +1,6 @@
 module Fermions
 
-using ProgressMeter, LinearAlgebra, Combinatorics
+using ProgressMeter, LinearAlgebra, Combinatorics, Distributed
 
 include("constants.jl")
 include("base.jl")

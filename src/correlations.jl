@@ -388,36 +388,35 @@ function SpecFuncVariational(
         allowedRelError::Float64;
         standDevGuess::Float64=0.1,
         degenTol::Float64=0.,
-        normalise::Bool=false,
         silent::Bool=false,
         broadFuncType::String="lorentz",
         fixedContrib::Union{Nothing,Vector{Vector{Float64}}}=nothing,
         maxIter::Int64=30,
     )
-    totalFixedContrib = ifelse(isnothing(fixedContrib), nothing, sum(fixedContrib))
+    totalFixedContrib = ifelse(isnothing(fixedContrib), zeros(length(spectralCoefficients)), sum(fixedContrib))
         
     function RootFunction(standDev)
         
-        specFunc = sum([SpecFunc(coeffs, freqValues, standDev;
-                                 normalise=normalise, silent=silent,
-                                 broadFuncType=broadFuncType
-                                )
-                        for coeffs in spectralCoefficients]
-                      )
-        if !isnothing(totalFixedContrib)
-            specFunc .+= totalFixedContrib
-        end
-        specFunc = Normalise(specFunc, freqValues, true)
-        return specFunc
+        centerSpecFuncArr = pmap(coeffs -> SpecFunc(coeffs, freqValues, standDev;
+                                               normalise=false, silent=silent,
+                                               broadFuncType=broadFuncType
+                                              ),
+                            spectralCoefficients
+                           )
+        #=if !isnothing(totalFixedContrib)=#
+        #=    specFunc .+= totalFixedContrib=#
+        #=end=#
+        localSpecFunc = Normalise(sum(centerSpecFuncArr) .+ totalFixedContrib, freqValues, true)
+        return centerSpecFuncArr, localSpecFunc
     end
 
-    specFunc = RootFunction(standDevGuess)
+    centerSpecFuncArr, localSpecFunc = RootFunction(standDevGuess)
 
     if targetHeight == 0
-        return specFunc, standDevGuess
+        return centerSpecFuncArr, localSpecFunc, standDevGuess
     end
 
-    error = specFunc[freqValues .≥ 0][1] / targetHeight - 1.
+    error = localSpecFunc[freqValues .≥ 0][1] / targetHeight - 1.
     step = 0
     while abs(error) ≥ allowedRelError && step ≤ maxIter
         step += 1
@@ -426,8 +425,8 @@ function SpecFuncVariational(
         else
             standDevGuess /= (1 + abs(error))
         end
-        specFunc = RootFunction(standDevGuess)
-        error = specFunc[freqValues .≥ 0][1] / targetHeight - 1.
+        centerSpecFuncArr, localSpecFunc = RootFunction(standDevGuess)
+        error = localSpecFunc[freqValues .≥ 0][1] / targetHeight - 1.
     end
 
     if abs(error) < allowedRelError
@@ -435,7 +434,7 @@ function SpecFuncVariational(
     else
         println("Failed to converge: error=$(abs(error))")
     end
-    return (specFunc, standDevGuess)
+    return (centerSpecFuncArr, localSpecFunc, standDevGuess)
 end
 export SpecFuncVariational
 
