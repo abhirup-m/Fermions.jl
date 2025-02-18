@@ -202,6 +202,18 @@ function VonNEntropy(
         tolerance=1e-10, schmidtGap=false
     )
     reducedDMatrix = ReducedDM(state, reducingIndices; reducingConfigs=reducingConfigs)
+    return VonNEntropy(reducedDMatrix;
+                       tolerance=tolerance, 
+                       schmidtGap=schmidtGap
+                      )
+end
+export VonNEntropy
+
+
+function VonNEntropy(
+        reducedDMatrix::Matrix{Float64};
+        tolerance=1e-10, schmidtGap=false
+    )
     eigenvalues = eigvals(0.5 * (reducedDMatrix + reducedDMatrix'))
     eigenvalues[eigenvalues.<tolerance] .= 0
     eigenvalues ./= sum(eigenvalues)
