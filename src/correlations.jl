@@ -700,3 +700,50 @@ function SpecFunc(
                     normalise=normalise, degenTol=degenTol, silent=silent, broadFuncType=broadFuncType)
 end
 export SpecFunc
+
+
+"""
+Given the spectral function (imag. part G_I of Greens function),
+calculates the self-energy. Uses Kramers-Kronig relations to
+first obtain real part G_R of Greens function, then uses
+Σ = G_R + iη G_I / (G_R^2 + G_I^2).
+"""
+function SelfEnergy(
+        imagGreen::Vector{Float64},
+        imagGreenNonint::Vector{Float64},
+        freqValues::Vector{Float64};
+        smoothFactor::Int64=10,
+        numericalZero::Float64=1e-5,
+        broadening::Float64=1e-1,
+    )
+    # normalise spectral  function
+    imagGreen ./= sum(imagGreen .* (maximum(freqValues) .- minimum(freqValues)) / (length(freqValues) - 1))
+    imagGreenNonint ./= sum(imagGreenNonint .* (maximum(freqValues) .- minimum(freqValues)) / (length(freqValues) - 1))
+
+    @assert imagGreen[1] ≤ imagGreen[2] && imagGreen[end] ≤ imagGreen[end-1]
+    #=imagGreen[imagGreen .< numericalZero] .= 0=#
+
+    # create finer frequency grid
+    deltaOmega = (maximum(freqValues) - minimum(freqValues)) / (length(freqValues) - 1)
+    finerFreqValues = collect(minimum(freqValues):deltaOmega:maximum(freqValues))
+
+    # interpolating through BSpline
+    sp = Spline1D(freqValues, imagGreen; k=3)
+    imagGreen = [sp(omega) for omega in finerFreqValues]
+    sp = Spline1D(freqValues, imagGreenNonint; k=3)
+    imagGreenNonint = [sp(omega) for omega in finerFreqValues]
+
+    realGreen = zeros(length(imagGreen))
+    realGreenNonint = zeros(length(imagGreen))
+    @time for (index, omega) in enumerate(finerFreqValues)
+        realGreen[index] = sum([imagGreen[indexprime] / (omega - omegaprime) for (indexprime, omegaprime) in enumerate(finerFreqValues) 
+                                if omega ≠ omegaprime]
+                              )
+        realGreenNonint[index] = sum([imagGreenNonint[indexprime] / (omega - omegaprime) for (indexprime, omegaprime) in enumerate(finerFreqValues) 
+                                if omega ≠ omegaprime]
+                              )
+    end
+    selfEnergy = 1 ./ (realGreenNonint .+ 1im .* imagGreenNonint) .- 1 ./ (realGreen .+ 1im .* imagGreen)
+    return selfEnergy
+end
+export SelfEnergy
