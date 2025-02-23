@@ -700,3 +700,31 @@ function SpecFunc(
                     normalise=normalise, degenTol=degenTol, silent=silent, broadFuncType=broadFuncType)
 end
 export SpecFunc
+
+
+"""
+Given the spectral function (imag. part G_I of Greens function),
+calculates the self-energy. Uses Kramers-Kronig relations to
+first obtain real part G_R of Greens function, then uses
+Σ = G_R + iη G_I / (G_R^2 + G_I^2).
+"""
+function SelfEnergy(
+        specFuncNonInt::Vector{Float64},
+        specFuncInt::Vector{Float64},
+        freqValues::Vector{Float64};
+        smoothFactor::Int64=10,
+        numericalZero::Float64=1e-5,
+        broadening::Float64=1e-1,
+    )
+
+    # normalise spectral  function
+    imagGreenNonint = (-π) .* specFuncNonInt ./ sum(specFuncNonInt .* (maximum(freqValues) .- minimum(freqValues)) / (length(freqValues) - 1))
+    imagGreen = (-π) .* specFuncInt ./ sum(specFuncInt .* (maximum(freqValues) .- minimum(freqValues)) / (length(freqValues) - 1))
+
+    greenFuncNonint = 1im .* hilbert(imagGreenNonint)
+    greenFunc = 1im .* hilbert(imagGreen)
+    
+    selfEnergy = 1 ./ greenFuncNonint .- 1 ./ greenFunc
+    return selfEnergy
+end
+export SelfEnergy
