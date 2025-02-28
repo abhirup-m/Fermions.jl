@@ -462,7 +462,11 @@ function SpecFunc(
     @assert broadFuncType ∈ ("lorentz", "gauss")
     @assert issorted(freqValues)
 
-    broadeningFunc(x, standDev) = ifelse(broadFuncType=="lorentz", standDev ./ (x .^ 2 .+ standDev .^ 2), exp.(-0.5 .* ((x ./ standDev).^2)) ./ (standDev .* ((2π)^0.5)))
+    broadeningFunc(x, standDev) = ifelse(
+                                         broadFuncType=="lorentz",
+                                         (1/pi) * (standDev / 2) ./ (x .^ 2 .+ (standDev / 2) .^ 2),
+                                         exp.(-0.5 .* ((x ./ standDev).^2)) ./ (standDev .* ((2π)^0.5))
+                                        )
     specFunc = 0 .* freqValues
     for (coeff, polePosition) in spectralCoefficients
             specFunc .+= coeff * broadeningFunc(freqValues .- polePosition, standDev)
