@@ -430,7 +430,13 @@ function SpecFuncVariational(
 
     error = localSpecFunc[freqValues .≥ 0][1] / targetHeight - 1.
     step = 0
+    if !silent
+        prog = ProgressUnknown(desc="Minimising height error.")
+    end
     while abs(error) ≥ allowedRelError && step ≤ maxIter
+        if !silent
+            next!(prog)
+        end
         step += 1
         if error > 0
             standDevGuess *= (1 + abs(error))
@@ -439,6 +445,9 @@ function SpecFuncVariational(
         end
         centerSpecFuncArr, localSpecFunc = RootFunction(standDevGuess)
         error = localSpecFunc[freqValues .≥ 0][1] / targetHeight - 1.
+    end
+    if !silent
+        finish!(prog)
     end
 
     if abs(error) < allowedRelError
@@ -462,7 +471,11 @@ function SpecFunc(
     @assert broadFuncType ∈ ("lorentz", "gauss")
     @assert issorted(freqValues)
 
-    broadeningFunc(x, standDev) = ifelse(broadFuncType=="lorentz", standDev ./ (x .^ 2 .+ standDev .^ 2), exp.(-0.5 .* ((x ./ standDev).^2)) ./ (standDev .* ((2π)^0.5)))
+    broadeningFunc(x, standDev) = ifelse(
+                                         broadFuncType=="lorentz",
+                                         (1/pi) * (standDev / 2) ./ (x .^ 2 .+ (standDev / 2) .^ 2),
+                                         exp.(-0.5 .* ((x ./ standDev).^2)) ./ (standDev .* ((2π)^0.5))
+                                        )
     specFunc = 0 .* freqValues
     for (coeff, polePosition) in spectralCoefficients
             specFunc .+= coeff * broadeningFunc(freqValues .- polePosition, standDev)

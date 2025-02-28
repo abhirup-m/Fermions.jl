@@ -867,7 +867,8 @@ function IterSpecFunc(
                                             degenTol=degenTol, occReq=occReq,
                                             magzReq=magzReq, excOccReq=excOccReq,
                                             excMagzReq=excMagzReq, 
-                                            excludeLevels=excludeLevels
+                                            excludeLevels=excludeLevels,
+                                            silent=silent,
                                            )
     specFuncMatrix = zeros(length(specFuncOperators), length(freqValues))
     for (index, specCoeffs) in enumerate(specCoeffsComplete)
@@ -896,13 +897,14 @@ function IterSpectralCoeffs(
         excOccReq::Union{Nothing,Function}=nothing,
         excMagzReq::Union{Nothing,Function}=nothing,
         excludeLevels::Function=x -> false,
+        silent::Bool=true,
     )
 
     quantumNoReq = CombineRequirements(occReq, magzReq)
     excQuantumNoReq = CombineRequirements(excOccReq, excMagzReq)
 
     specCoeffsComplete = Vector{NTuple{2, Float64}}[]
-    for index in length(savePaths)-length(specFuncOperators):length(savePaths)-1
+    @showprogress enabled=!silent for index in length(savePaths)-length(specFuncOperators):length(savePaths)-1
         savePath = savePaths[index]
         data = deserialize(savePath)
         eigVecs = [collect(col) for col in eachcol(data["basis"])]
