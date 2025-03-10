@@ -728,11 +728,17 @@ function SelfEnergy(
         smoothFactor::Int64=10,
         numericalZero::Float64=1e-5,
         broadening::Float64=1e-1,
+        normalise::Bool=true,
     )
 
     # normalise spectral  function
-    imagGreenNonint = (-π) .* specFuncNonInt ./ sum(specFuncNonInt .* (maximum(freqValues) .- minimum(freqValues)) / (length(freqValues) - 1))
-    imagGreen = (-π) .* specFuncInt ./ sum(specFuncInt .* (maximum(freqValues) .- minimum(freqValues)) / (length(freqValues) - 1))
+    if normalise
+        imagGreenNonint = (-π) .* specFuncNonInt ./ sum(specFuncNonInt .* (maximum(freqValues) .- minimum(freqValues)) / (length(freqValues) - 1))
+        imagGreen = (-π) .* specFuncInt ./ sum(specFuncInt .* (maximum(freqValues) .- minimum(freqValues)) / (length(freqValues) - 1))
+    else
+        imagGreenNonint = (-π) .* specFuncNonInt
+        imagGreen = (-π) .* specFuncInt
+    end
 
     greenFuncNonint = 1im .* hilbert(imagGreenNonint)
     greenFunc = 1im .* hilbert(imagGreen)
