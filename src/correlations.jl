@@ -347,6 +347,7 @@ function SpectralCoefficients(
         excludeLevels::Function,
         degenTol::Float64;
         silent::Bool=false,
+        progressDesc::String="Progress: ",
     )
     energyGs = minimum(eigVals)
     degenerateManifold = eigVals .≤ energyGs + degenTol
@@ -355,7 +356,7 @@ function SpectralCoefficients(
         println("Degeneracy = ", length(eigVals[degenerateManifold]), "; Range=[$(eigVals[degenerateManifold][1]), $(eigVals[degenerateManifold][end])]")
     end
     spectralCoefficients = NTuple{2, Float64}[]
-    @showprogress for groundState in eigVecs[degenerateManifold]
+    @showprogress desc=progressDesc for groundState in eigVecs[degenerateManifold]
         excitationCreate = probes["create"] * groundState
         excitationDestroy = probes["destroy"] * groundState
         excitationCreateBra = groundState' * probes["create"]
@@ -476,11 +477,7 @@ function SpecFunc(
                                          (1/pi) * (standDev / 2) ./ (x .^ 2 .+ (standDev / 2) .^ 2),
                                          exp.(-0.5 .* ((x ./ standDev).^2)) ./ (standDev .* ((2π)^0.5))
                                         )
-    specFunc = 0 .* freqValues
-    for (coeff, polePosition) in spectralCoefficients
-            specFunc .+= coeff * broadeningFunc(freqValues .- polePosition, standDev)
-    end
-
+    specFunc = sum(fetch.([Threads.@spawn coeff * broadeningFunc(freqValues .- polePosition, standDev) for (coeff, polePosition) in spectralCoefficients]))
     specFunc = Normalise(specFunc, freqValues, normalise)
     return specFunc
 end

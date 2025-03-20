@@ -904,7 +904,7 @@ function IterSpectralCoeffs(
     excQuantumNoReq = CombineRequirements(excOccReq, excMagzReq)
 
     specCoeffsComplete = Vector{NTuple{2, Float64}}[]
-    @showprogress enabled=!silent for index in length(savePaths)-length(specFuncOperators):length(savePaths)-1
+    @showprogress desc="Iter Spec Coeffs" enabled=!silent for index in length(savePaths)-length(specFuncOperators):length(savePaths)-1
         savePath = savePaths[index]
         data = deserialize(savePath)
         eigVecs = [collect(col) for col in eachcol(data["basis"])]
