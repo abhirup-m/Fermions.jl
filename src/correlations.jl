@@ -369,8 +369,12 @@ function SpectralCoefficients(
             spectralWeights = [(excitationDestroyBra * excitedState) * (excitedState' * excitationCreate),
                                (excitedState' * excitationDestroy) * (excitationCreateBra * excitedState)
                               ]
-            push!(spectralCoefficients, (spectralWeights[1], eigVals[index] - energyGs))
-            push!(spectralCoefficients, (spectralWeights[2], -eigVals[index] + energyGs))
+            if spectralWeights[1] ≠ 0
+                push!(spectralCoefficients, (spectralWeights[1], eigVals[index] - energyGs))
+            end
+            if spectralWeights[2] ≠ 0
+                push!(spectralCoefficients, (spectralWeights[2], -eigVals[index] + energyGs))
+            end
         end
     end
     return spectralCoefficients
@@ -472,6 +476,9 @@ function SpecFunc(
     @assert broadFuncType ∈ ("lorentz", "gauss")
     @assert issorted(freqValues)
 
+    if isempty(spectralCoefficients) || spectralCoefficients .|> first .|> abs |> maximum == 0
+        return zeros(length(freqValues))
+    end
     broadeningFunc(x, standDev) = ifelse(
                                          broadFuncType=="lorentz",
                                          (1/pi) * (standDev / 2) ./ (x .^ 2 .+ (standDev / 2) .^ 2),
