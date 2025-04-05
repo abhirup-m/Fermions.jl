@@ -664,3 +664,29 @@ function KondoModel(
     return hamiltonian
 end
 export KondoModel
+
+function TightBinding(
+        numSites::Int64;
+        joinEnds::Bool=true,
+        spinLess::Bool=false,
+    )
+    hamiltonian = Tuple{String, Vector{Int64}, Float64}[]
+    if spinLess
+        for site in 1:numSites-1
+            append!(hamiltonian, [("+-", [site, site+1], -1.0), ("+-", [site+1, site], -1.0)])
+        end
+        if joinEnds
+            append!(hamiltonian, [("+-", [1, numSites], -1.0), ("+-", [numSites, 1], -1.0)])
+        end
+    else
+        for site in 1:2:2*numSites-2
+            append!(hamiltonian, [("+-", [site, site+2], -1.0), ("+-", [site+2, site], -1.0)])
+            append!(hamiltonian, [("+-", [site + 1, site + 3], -1.0), ("+-", [site + 3, site + 1], -1.0)])
+        end
+        if joinEnds
+            append!(hamiltonian, [("+-", [1, 2 * numSites - 1], -1.0), ("+-", [2 * numSites - 1, 1], -1.0)])
+            append!(hamiltonian, [("+-", [2, 2 * numSites], -1.0), ("+-", [2 * numSites, 2], -1.0)])
+        end
+    end
+end
+export TightBinding
