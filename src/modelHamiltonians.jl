@@ -692,51 +692,53 @@ end
 export TightBinding
 
 function KondoModel2D(
-        kondoJ::Vector{Tuple{Int64, Int64, Float64}},
-        hop_t::Number,
+        kondoJ::Array{Float64, 2},
+        sortedIndices::Vector{Int64},
+        hop_t::Number;
         couplingTolerance::Float64=1e-15,
         globalField::Float64=0.,
     )
+    dimension = Int(size(kondoJ)[1]^0.5)
     hamiltonian = Tuple{String, Vector{Int64}, Float64}[]
-    siteIndices = Dict{NTuple{2, Int64}, Int64}((x, y) => i + 1 for (i, (x, y, _)) in kondoJ |> enumerate)
-    siteIndices[(0, 0)] = 1
 
     # intra-bath hopping
     if abs(hop_t) > couplingTolerance
-        for (x1, y1, _) in kondoJ
-            site1 = siteIndices[(x1, y1)]
-            for (x2, y2) in [(x1 + 1, y1), (x1, y1 + 2)]
-                if (x2, y2) ∉ keys(siteIndices)
+        for p1 in sortedIndices[2:end]
+            for p2 in [p1 + 1, p1 + dimension]
+                if p2 ∉ sortedIndices || p2 == sortedIndices[1]
                     continue
                 end
-                site2 = siteIndices[(x2, y2)]
-                if site2 == 0
-                    continue
-                end
-                push!(hamiltonian, ("+-",  [2 * site1 - 1, 2 * site2 - 1], -hop_t)) # c^†_{j,up} c_{j+1,up}
-                push!(hamiltonian, ("+-",  [2 * site2 - 1, 2 * site1 - 1], -hop_t)) # c^†_{j+1,up} c_{j,up}
-                push!(hamiltonian, ("+-",  [2 * site1, 2 * site2], -hop_t)) # c^†_{j,dn} c_{j+1,dn}
-                push!(hamiltonian, ("+-",  [2 * site2, 2 * site1], -hop_t)) # c^†_{j+1,dn} c_{j,dn}
+                sites = findall(∈([p1, p2]), sortedIndices)
+                push!(hamiltonian, ("+-",  [2 * sites[1] - 1, 2 * sites[2] - 1], -hop_t)) # c^†_{j,up} c_{j+1,up}
+                push!(hamiltonian, ("+-",  [2 * sites[2] - 1, 2 * sites[1] - 1], -hop_t)) # c^†_{j+1,up} c_{j,up}
+                push!(hamiltonian, ("+-",  [2 * sites[1], 2 * sites[2]], -hop_t)) # c^†_{j,dn} c_{j+1,dn}
+                push!(hamiltonian, ("+-",  [2 * sites[2], 2 * sites[1]], -hop_t)) # c^†_{j+1,dn} c_{j,dn}
             end
         end
     end
 
     # kondo terms
-    for (x, y, coupling) in kondoJ
-        if abs(coupling) > couplingTolerance
-            site = siteIndices[(x, y)]
-            push!(hamiltonian, ("nn",  [1, 2 * site - 1], coupling/4)) # n_{d up, n_{0 up}
-            push!(hamiltonian, ("nn",  [1, 2 * site], -coupling/4)) # n_{d up, n_{0 down}
-            push!(hamiltonian, ("nn",  [2, 2 * site - 1], -coupling/4)) # n_{d down, n_{0 up}
-            push!(hamiltonian, ("nn",  [2, 2 * site], coupling/4)) # n_{d down, n_{0 down}
-            push!(hamiltonian, ("+-+-",  [1, 2, 2 * site, 2 * site - 1], coupling/2)) # S_d^+ S_0^-
-            push!(hamiltonian, ("+-+-",  [2, 1, 2 * site - 1, 2 * site], coupling/2)) # S_d^- S_0^+
+    for p1 in sortedIndices[2:end]
+        for p2 in sortedIndices[2:end]
+            coupling = kondoJ[p1, p2]
+            if abs(coupling) > couplingTolerance
+                sites = findall(∈([p1, p2]), sortedIndices)
+                if p1 == p2
+                    sites = repeat(sites, 2)
+                end
+                push!(hamiltonian, ("n+-",  [1, 2 * sites[1] - 1, 2 * sites[2] - 1], coupling/4)) # n_{d up, n_{0 up}
+                push!(hamiltonian, ("n+-",  [1, 2 * sites[1], 2 * sites[2]], -coupling/4)) # n_{d up, n_{0 down}
+                push!(hamiltonian, ("n+-",  [2, 2 * sites[1] - 1, 2 * sites[2] - 1], -coupling/4)) # n_{d down, n_{0 up}
+                push!(hamiltonian, ("n+-",  [2, 2 * sites[1], 2 * sites[2]], coupling/4)) # n_{d down, n_{0 down}
+                push!(hamiltonian, ("+-+-",  [1, 2, 2 * sites[1], 2 * sites[2] - 1], coupling/2)) # S_d^+ S_0^-
+                push!(hamiltonian, ("+-+-",  [2, 1, 2 * sites[1] - 1, 2 * sites[2]], coupling/2)) # S_d^- S_0^+
+            end
         end
     end
 
     # global magnetic field (to lift any trivial degeneracy)
     if abs(globalField) > couplingTolerance
-        for site in values(siteIndices)
+        for site in eachindex(sortedIndices)
             push!(hamiltonian, ("n",  [2 * site - 1], globalField/2))
             push!(hamiltonian, ("n",  [2 * site], -globalField/2))
         end
