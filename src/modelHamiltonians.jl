@@ -665,6 +665,62 @@ function KondoModel(
 end
 export KondoModel
 
+
+function KondoModel(
+        numBathSites::Int64,
+        hop_t::Float64,
+        kondoJ::Vector{Dict{NTuple{2, Int64}, Float64}};
+        globalField::Float64=0.,
+        couplingTolerance::Float64=1e-15,
+    )
+    hamiltonian = Tuple{String, Vector{Int64}, Float64}[]
+
+    upIndices = [1 .+ 2 * channel .+ 2 * length(kondoJ) .* (0:(numBathSites-1)) for channel in 1:length(kondoJ)]
+
+    # intra-bath hopping
+    if abs(hop_t) > couplingTolerance
+        for site_i in 1:(numBathSites-1)
+            for channel in 1:length(kondoJ)
+                upSite_i = upIndices[channel][site_i]
+                upSite_ip1 = upIndices[channel][site_i + 1]
+                push!(hamiltonian, ("+-",  [upSite_i, upSite_ip1], -hop_t)) # c^†_{j,up} c_{j+1,up}
+                push!(hamiltonian, ("+-",  [upSite_ip1, upSite_i], -hop_t)) # c^†_{j+1,up} c_{j,up}
+                push!(hamiltonian, ("+-",  [upSite_i + 1, upSite_ip1 + 1], -hop_t)) # c^†_{j,dn} c_{j+1,dn}
+                push!(hamiltonian, ("+-",  [upSite_ip1 + 1, upSite_i + 1], -hop_t)) # c^†_{j+1,dn} c_{j,dn}
+            end
+        end
+    end
+
+    # kondo terms
+    for channel in 1:length(kondoJ)
+        for ((i, j), J) in kondoJ[channel]
+            if abs(J) > couplingTolerance
+                upSite_i = upIndices[channel][i]
+                upSite_j = upIndices[channel][j]
+                push!(hamiltonian, ("n+-",  [1, upSite_i, upSite_j], J/4)) # n_{d up, n_{0 up}
+                push!(hamiltonian, ("n+-",  [1, upSite_i+1, upSite_j+1], -J/4)) # n_{d up, n_{0 down}
+                push!(hamiltonian, ("n+-",  [2, upSite_i, upSite_j], -J/4)) # n_{d down, n_{0 up}
+                push!(hamiltonian, ("n+-",  [2, upSite_i+1, upSite_j+1], J/4)) # n_{d down, n_{0 down}
+                push!(hamiltonian, ("+-+-",  [1, 2, upSite_i, upSite_j+1], J/2)) # S_d^+ S_0^-
+                push!(hamiltonian, ("+-+-",  [2, 1, upSite_i+1, upSite_j], J/2)) # S_d^- S_0^+
+            end
+        end
+    end
+
+    # global magnetic field (to lift any trivial degeneracy)
+    if abs(globalField) > couplingTolerance
+        for site in 1:(1 + numBathSites * length(kondoJ))
+            push!(hamiltonian, ("n",  [2 * site - 1], globalField/2))
+            push!(hamiltonian, ("n",  [2 * site], -globalField/2))
+        end
+    end
+
+    @assert !isempty(hamiltonian) "Hamiltonian is empty!"
+
+    return hamiltonian
+end
+export KondoModel
+
 function TightBinding(
         numSites::Int64;
         joinEnds::Bool=true,
@@ -709,6 +765,7 @@ function KondoModel2D(
                     continue
                 end
                 sites = findall(∈([p1, p2]), sortedIndices)
+                println(sites)
                 push!(hamiltonian, ("+-",  [2 * sites[1] - 1, 2 * sites[2] - 1], -hop_t)) # c^†_{j,up} c_{j+1,up}
                 push!(hamiltonian, ("+-",  [2 * sites[2] - 1, 2 * sites[1] - 1], -hop_t)) # c^†_{j+1,up} c_{j,up}
                 push!(hamiltonian, ("+-",  [2 * sites[1], 2 * sites[2]], -hop_t)) # c^†_{j,dn} c_{j+1,dn}
