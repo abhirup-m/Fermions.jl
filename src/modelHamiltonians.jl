@@ -701,8 +701,8 @@ function KondoModel(
                 push!(hamiltonian, ("n+-",  [1, upSite_i+1, upSite_j+1], -J/4)) # n_{d up, n_{0 down}
                 push!(hamiltonian, ("n+-",  [2, upSite_i, upSite_j], -J/4)) # n_{d down, n_{0 up}
                 push!(hamiltonian, ("n+-",  [2, upSite_i+1, upSite_j+1], J/4)) # n_{d down, n_{0 down}
-                push!(hamiltonian, ("+-+-",  [1, 2, upSite_i, upSite_j+1], J/2)) # S_d^+ S_0^-
-                push!(hamiltonian, ("+-+-",  [2, 1, upSite_i+1, upSite_j], J/2)) # S_d^- S_0^+
+                push!(hamiltonian, ("+-+-",  [1, 2, upSite_i+1, upSite_j], J/2)) # S_d^+ S_0^-
+                push!(hamiltonian, ("+-+-",  [2, 1, upSite_i, upSite_j+1], J/2)) # S_d^- S_0^+
             end
         end
     end
