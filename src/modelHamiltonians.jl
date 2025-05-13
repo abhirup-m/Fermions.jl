@@ -624,44 +624,9 @@ function KondoModel(
         couplingTolerance::Float64=1e-15,
     )
     hamiltonian = Tuple{String, Vector{Int64}, Float64}[]
+    kondoJEnlarged = [Dict((1, 1) => J) for J in kondoJ]
+    return KondoModel(numBathSites, hop_t, kondoJEnlarged; globalField=globalField, couplingTolerance=couplingTolerance)
 
-    # intra-bath hopping
-    if abs(hop_t) > couplingTolerance
-        for site in 1:(numBathSites-1)
-            for channel in 1:length(kondoJ)
-                upSite = 1 + 2 * length(kondoJ) * (site - 1) + 2 * channel
-                push!(hamiltonian, ("+-",  [upSite, upSite + 2 * length(kondoJ)], -hop_t)) # c^†_{j,up} c_{j+1,up}
-                push!(hamiltonian, ("+-",  [upSite + 2 * length(kondoJ), upSite], -hop_t)) # c^†_{j+1,up} c_{j,up}
-                push!(hamiltonian, ("+-",  [upSite + 1, upSite + 1 + 2 * length(kondoJ)], -hop_t)) # c^†_{j,dn} c_{j+1,dn}
-                push!(hamiltonian, ("+-",  [upSite + 1 + 2 * length(kondoJ), upSite + 1], -hop_t)) # c^†_{j+1,dn} c_{j,dn}
-            end
-        end
-    end
-
-    # kondo terms
-    for channel in 1:length(kondoJ)
-        if abs(kondoJ[channel]) > couplingTolerance
-            channelZerothSite = 1 + 2 * channel
-            push!(hamiltonian, ("nn",  [1, channelZerothSite], kondoJ[channel]/4)) # n_{d up, n_{0 up}
-            push!(hamiltonian, ("nn",  [1, channelZerothSite + 1], -kondoJ[channel]/4)) # n_{d up, n_{0 down}
-            push!(hamiltonian, ("nn",  [2, channelZerothSite], -kondoJ[channel]/4)) # n_{d down, n_{0 up}
-            push!(hamiltonian, ("nn",  [2, channelZerothSite + 1], kondoJ[channel]/4)) # n_{d down, n_{0 down}
-            push!(hamiltonian, ("+-+-",  [1, 2, channelZerothSite + 1, channelZerothSite], kondoJ[channel]/2)) # S_d^+ S_0^-
-            push!(hamiltonian, ("+-+-",  [2, 1, channelZerothSite, channelZerothSite + 1], kondoJ[channel]/2)) # S_d^- S_0^+
-        end
-    end
-
-    # global magnetic field (to lift any trivial degeneracy)
-    if abs(globalField) > couplingTolerance
-        for site in 1:(1 + numBathSites * length(kondoJ))
-            push!(hamiltonian, ("n",  [2 * site - 1], globalField/2))
-            push!(hamiltonian, ("n",  [2 * site], -globalField/2))
-        end
-    end
-
-    @assert !isempty(hamiltonian) "Hamiltonian is empty!"
-
-    return hamiltonian
 end
 export KondoModel
 
