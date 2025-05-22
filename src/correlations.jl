@@ -343,9 +343,9 @@ export ThermalAverage
 function SpectralCoefficients(
         eigVecs::Vector{Vector{Float64}},
         eigVals::Vector{Float64},
-        probes::Dict{String,Matrix{Float64}},
-        excludeLevels::Function,
-        degenTol::Float64;
+        probes::Dict{String,Matrix{Float64}};
+        excludeLevels::Function=x->false,
+        degenTol::Float64=0.,
         silent::Bool=false,
         progressDesc::String="Progress: ",
     )
@@ -720,6 +720,32 @@ export SpecFunc
 
 
 """
+Given the spectrum, calculates the self-energy. Uses
+Σ = G_R + iη G_I / (G_R^2 + G_I^2).
+"""
+function SelfEnergy(
+        spectralCoefficients::Vector{NTuple{2, Float64}},
+        spectralCoefficientsNonInt::Vector{NTuple{2, Float64}},
+        freqValues::Vector{Float64};
+        standDev::Float64=1e-5,
+    )
+
+    intGreensFunc = 0im .+ zeros(length(freqValues))
+    for (coeff, polePos) in spectralCoefficients
+        intGreensFunc .+= coeff ./ (freqValues .+ 1im * standDev .- polePos)
+    end
+    nonIntGreensFunc = 0im .+ zeros(length(freqValues))
+    for (coeff, polePos) in spectralCoefficientsNonInt
+        nonIntGreensFunc .+= coeff ./ (freqValues .+ 1im * standDev .- polePos)
+    end
+
+    selfEnergy = 1 ./ nonIntGreensFunc .- 1 ./ intGreensFunc
+    return selfEnergy
+end
+export SelfEnergy
+
+
+"""
 Given the spectral function (imag. part G_I of Greens function),
 calculates the self-energy. Uses Kramers-Kronig relations to
 first obtain real part G_R of Greens function, then uses
@@ -729,9 +755,6 @@ function SelfEnergy(
         specFuncNonInt::Vector{Float64},
         specFuncInt::Vector{Float64},
         freqValues::Vector{Float64};
-        smoothFactor::Int64=10,
-        numericalZero::Float64=1e-5,
-        broadening::Float64=1e-1,
         normalise::Bool=true,
     )
 
