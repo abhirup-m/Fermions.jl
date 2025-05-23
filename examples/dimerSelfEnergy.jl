@@ -3,24 +3,32 @@ using ProgressMeter, LinearAlgebra, Plots
 include("../src/base.jl")
 include("../src/correlations.jl")
 
-U = 1.0
-numSites = 10
+V = 0.1
+Ed = -0.0
+numSites = 12
 basis = BasisStates(numSites)
 probes = Dict("create" => OperatorMatrix(basis, [("+", [1], 1.0)]), "destroy" => OperatorMatrix(basis, [("-", [1], 1.0)]))
-H = [("n", [i], cos(2π*i/numSites)) for i in 1:numSites]
-#=H0 = [("+-", [1, 3], 1.0), ("+-", [3, 1], 1.0), ("+-", [2, 4], 1.0), ("+-", [4, 2], 1.0)] #, ("nn", [1, 2], U), ("nn", [3, 4], U)]=#
+Ek = 10.0 .^ range(-3, stop=0, length=div(numSites-1, 2))
+H = [("n", [2 * i], Ek[i]) for i in 1:div(numSites-1, 2)]
+append!(H, [("n", [2 * i + 1], -Ek[i]) for i in 1:div(numSites-1, 2)])
+append!(H, [("n", [1], Ed)])
 E, X = eigen(Hermitian(OperatorMatrix(basis, H)))
+println(E[1:10])
 sc0 = SpectralCoefficients([collect(Xi) for Xi in eachcol(X)], E, probes);
 
-for i in 1:numSites
-    append!(H, [("+-", [i, 1], U)])
+for i in 1:div(numSites-1, 2)
+    append!(H, [("+-", [1, 2 * i], Ek[i]^2), ("+-", [2 * i, 1], Ek[i]^2)])
+    append!(H, [("+-", [1, 2 * i + 1], Ek[i]^2), ("+-", [2 * i + 1, 1], Ek[i]^2)])
 end
 E, X = eigen(Hermitian(OperatorMatrix(basis, H)))
+println(E[1:10])
 sc = SpectralCoefficients([collect(Xi) for Xi in eachcol(X)], E, probes);
 
-freqValues = collect(-2:0.01:2)
-SE = SelfEnergy(sc, sc0, freqValues)
+freqValues = collect(-5:1e-3:5)
+G, G0, SE = SelfEnergy(sc, sc0, freqValues; standDev=1e-1)
 p1 = plot(freqValues, real(SE))
-p2 = scatter(freqValues, imag(SE))
-display(plot(p1, p2))
+p2 = plot(freqValues, imag(SE))
+p3 = plot(freqValues, -imag(G0))
+p4 = plot(freqValues, -imag(G))
+display(plot(p1, p2, p3, p4, size=(1200, 1000)))
 

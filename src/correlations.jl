@@ -720,8 +720,14 @@ export SpecFunc
 
 
 """
-Given the spectrum, calculates the self-energy. Uses
-Σ = G_R + iη G_I / (G_R^2 + G_I^2).
+Given the interacting and non-interacting spectral coefficients 
+(matrix elements of excitation operator between the ground state 
+and excited states), calculates the self-energy. The function 
+first calculats the interacting and non-interacting greens functions
+from the spectral coefficients, then uses Dyson's equation 
+Σ = G_R + iη G_I / (G_R^2 + G_I^2) to obtain the self-energy. Poles
+are smoothened using a lorentzian broadening, whose standard deviation
+can be optionally passed to the function.
 """
 function SelfEnergy(
         spectralCoefficients::Vector{NTuple{2, Float64}},
@@ -740,7 +746,7 @@ function SelfEnergy(
     end
 
     selfEnergy = 1 ./ nonIntGreensFunc .- 1 ./ intGreensFunc
-    return selfEnergy
+    return intGreensFunc, nonIntGreensFunc, selfEnergy
 end
 export SelfEnergy
 

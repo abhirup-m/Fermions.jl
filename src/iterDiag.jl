@@ -936,8 +936,8 @@ function IterSpectralCoeffs(
         end
 
         operator = Dict{String, Matrix{Float64}}("create" => specFuncOperators[index], "destroy" => specFuncOperators[index]')
-        specCoeffs = SpectralCoefficients(minimalEigVecs, minimalEigVals, operator, 
-                                          excludeLevels, degenTol; silent=true,
+        specCoeffs = SpectralCoefficients(minimalEigVecs, minimalEigVals, operator; 
+                                          excludeLevels=excludeLevels, degenTol=degenTol, silent=true,
                                          )
         push!(specCoeffsComplete, specCoeffs)
     end
