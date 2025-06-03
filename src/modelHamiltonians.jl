@@ -188,6 +188,54 @@ export KondoModel
 
 
 function KondoModel(
+        dispersionArray::Vector{Vector{Float64}},
+        kondoJ::Vector{Dict{NTuple{2, Int64}, Float64}};
+        globalField::Float64=0.,
+        couplingTolerance::Float64=1e-15,
+    )
+    hamiltonian = Tuple{String, Vector{Int64}, Float64}[]
+    @assert dispersionArray .|> length |> allequal
+    numBathSites = length(dispersionArray[1])
+    upIndices = [1 .+ 2 * channel .+ 2 * length(kondoJ) .* (0:(numBathSites-1)) for channel in 1:length(kondoJ)]
+
+    # bath kinetic energy
+    for (channel, dispersion) in enumerate(dispersionArray)
+        append!(hamiltonian, [("n", [upIndices[channel][i]], Ek) for (i, Ek) in enumerate(dispersion)])
+        append!(hamiltonian, [("n", [upIndices[channel][i]+1], Ek) for (i, Ek) in enumerate(dispersion)])
+    end
+
+    # kondo terms
+    for channel in 1:length(kondoJ)
+        for ((i, j), J) in kondoJ[channel]
+            if abs(J) > couplingTolerance
+                upSite_i = upIndices[channel][i]
+                upSite_j = upIndices[channel][j]
+                push!(hamiltonian, ("n+-",  [1, upSite_i, upSite_j], J/4)) # n_{d up, n_{0 up}
+                push!(hamiltonian, ("n+-",  [1, upSite_i+1, upSite_j+1], -J/4)) # n_{d up, n_{0 down}
+                push!(hamiltonian, ("n+-",  [2, upSite_i, upSite_j], -J/4)) # n_{d down, n_{0 up}
+                push!(hamiltonian, ("n+-",  [2, upSite_i+1, upSite_j+1], J/4)) # n_{d down, n_{0 down}
+                push!(hamiltonian, ("+-+-",  [1, 2, upSite_i+1, upSite_j], J/2)) # S_d^+ S_0^-
+                push!(hamiltonian, ("+-+-",  [2, 1, upSite_i, upSite_j+1], J/2)) # S_d^- S_0^+
+            end
+        end
+    end
+
+    # global magnetic field (to lift any trivial degeneracy)
+    if abs(globalField) > couplingTolerance
+        for site in 1:(1 + numBathSites * length(kondoJ))
+            push!(hamiltonian, ("n",  [2 * site - 1], globalField/2))
+            push!(hamiltonian, ("n",  [2 * site], -globalField/2))
+        end
+    end
+
+    @assert !isempty(hamiltonian) "Hamiltonian is empty!"
+
+    return hamiltonian
+end
+export KondoModel
+
+
+function KondoModel(
         dispersion::Vector{Float64},
         kondoJ::Float64,
         bathInt::Float64;
@@ -685,6 +733,7 @@ function KondoModel(
     return hamiltonian
 end
 export KondoModel
+
 
 function TightBinding(
         numSites::Int64;
