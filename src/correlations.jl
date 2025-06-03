@@ -733,8 +733,11 @@ function SelfEnergy(
         spectralCoefficients::Vector{NTuple{2, Float64}},
         spectralCoefficientsNonInt::Vector{NTuple{2, Float64}},
         freqValues::Vector{Float64};
-        standDev::Float64=1e-5,
+        standDev::Union{Vector{Float64}, Float64}=1e-5,
     )
+    if typeof(standDev) == Float64
+        standDev = standDev .* ones(length(freqValues))
+    end
 
     intGreensFunc = 0im .+ zeros(length(freqValues))
     for (coeff, polePos) in spectralCoefficients
