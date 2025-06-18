@@ -733,6 +733,7 @@ function SelfEnergy(
         spectralCoefficients::Vector{NTuple{2, Float64}},
         spectralCoefficientsNonInt::Vector{NTuple{2, Float64}},
         freqValues::Vector{Float64};
+        norm::Bool=false,
         standDev::Union{Vector{Float64}, Float64}=1e-5,
     )
     if typeof(standDev) == Float64
@@ -746,6 +747,12 @@ function SelfEnergy(
     nonIntGreensFunc = 0im .+ zeros(length(freqValues))
     for (coeff, polePos) in spectralCoefficientsNonInt
         nonIntGreensFunc .+= coeff ./ (freqValues .+ 1im * standDev .- polePos)
+    end
+
+    if norm
+        deltaOmega = freqValues[2:end] .- freqValues[1:end-1]
+        intGreensFunc ./= abs(imag(intGreensFunc[1:end-1]) .* deltaOmega)
+        nonIntGreensFunc ./= abs(imag(nonIntGreensFunc[1:end-1]) .* deltaOmega)
     end
 
     selfEnergy = 1 ./ nonIntGreensFunc .- 1 ./ intGreensFunc
