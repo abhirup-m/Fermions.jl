@@ -498,8 +498,7 @@ function IterDiag(
             # calculate correlations using the ground state of the final step
             for (name, correlationDef) in correlationDefDict
                 if !isnothing(corrOperatorDict[name])
-                    correlationValue = finalState' * corrOperatorDict[name] * finalState
-                    resultsDict[name] = correlationValue
+                    resultsDict[name] = finalState' * corrOperatorDict[name] * finalState
                 end
             end
 
