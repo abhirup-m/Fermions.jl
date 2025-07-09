@@ -1,3 +1,5 @@
+using LinearAlgebra
+
 const qbitMatrices = Dict{Char, Matrix{Float64}}()
 qbitMatrices['n'] = diagm([0, 1.])
 qbitMatrices['h'] = diagm([1., 0])

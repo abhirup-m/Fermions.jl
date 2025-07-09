@@ -493,13 +493,12 @@ function IterDiag(
             if !isnothing(corrQuantumNoReq) && !isnothing(quantumNos)
                 indices = findall(q -> corrQuantumNoReq(q, maximum(currentSites)), quantumNos)
             end
-            finalState = rotation[:, indices[sortperm(eigVals[indices])[1]]]
+            groundstateSubspace = rotation[:, indices[sortperm(eigVals[indices])[abs.(eigVals[indices] .- minimum(eigVals[indices])) .≤ degenTol]]]
 
             # calculate correlations using the ground state of the final step
             for (name, correlationDef) in correlationDefDict
                 if !isnothing(corrOperatorDict[name])
-                    correlationValue = finalState' * corrOperatorDict[name] * finalState
-                    resultsDict[name] = correlationValue
+                    resultsDict[name] = sum([finalState' * corrOperatorDict[name] * finalState for finalState in eachcol(groundstateSubspace)]) / size(groundstateSubspace)[2]
                 end
             end
 
