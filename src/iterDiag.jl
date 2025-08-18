@@ -77,7 +77,8 @@ already present in the system, then it is a simple tensor product. If one
 or more are new indices, then first track the composite operators for the
 old and new sets, then tensor multiply these two composite operators.
 """
-function CreateProductOperator(
+
+@everywhere function CreateProductOperator(
         productOperatorDef::Tuple{String,Vector{Int64}},
         operators::Dict{Tuple{String,Vector{Int64}}, Matrix{Float64}};
         newSites::Vector{Int64}=Int64[],
@@ -461,9 +462,9 @@ function IterDiag(
         end
     end
 
-    resultsDict = Dict{String, Union{Nothing, Float64}}(name => nothing for name in keys(correlationDefDict))
-    @assert "energyPerSite" ∉ keys(resultsDict)
-    resultsDict["energyPerSite"] = nothing
+    results = Dict{String, Any}(name => nothing for name in keys(correlationDefDict))
+    @assert "energyPerSite" ∉ keys(results)
+    results["energyPerSite"] = nothing
 
     pbar = Progress(length(hamltFlow); enabled=!silent)
     for (step, hamlt) in enumerate(hamltFlow)
@@ -473,7 +474,7 @@ function IterDiag(
         end
         
         # get spectrum
-        eigVals, rotation, quantumNos = Diagonalise(hamltMatrix, quantumNos)
+        @time eigVals, rotation, quantumNos = Diagonalise(hamltMatrix, quantumNos)
 
         if step == length(hamltFlow)
             # if this is the last step, save data and calculate any correlations
@@ -483,11 +484,11 @@ function IterDiag(
                                             "currentSites" => currentSites,
                                             "newSites" => newSitesFlow[step],
                                             "bondAntiSymmzer" => bondAntiSymmzer,
-                                            "results" => resultsDict,
+                                            "results" => results,
                                            )
                      )
 
-            resultsDict["energyPerSite"] = eigVals[1]/maximum(currentSites)
+            results["energyPerSite"] = eigVals[1]/maximum(currentSites)
 
             indices = 1:length(eigVals)
             if !isnothing(corrQuantumNoReq) && !isnothing(quantumNos)
@@ -498,7 +499,7 @@ function IterDiag(
             # calculate correlations using the ground state of the final step
             for (name, correlationDef) in correlationDefDict
                 if !isnothing(corrOperatorDict[name])
-                    resultsDict[name] = finalState' * corrOperatorDict[name] * finalState
+                    results[name] = finalState' * corrOperatorDict[name] * finalState
                 end
             end
 
@@ -519,7 +520,7 @@ function IterDiag(
                         "newSites" => newSitesFlow[step],
                         "bondAntiSymmzer" => bondAntiSymmzer,
                         "identityEnv" => identityEnv,
-                        "results" => resultsDict,
+                        "results" => results,
                        )
 
         serialize(savePaths[step], saveDict)
@@ -542,20 +543,21 @@ function IterDiag(
         end
 
         # rotate and enlarge existing operators
-        hamltMatrix, operators, bondAntiSymmzer, corrOperatorDict = UpdateOldOperators(eigVals, identityEnv, basket[step+1], 
+        @time hamltMatrix, operators, bondAntiSymmzer, corrOperatorDict = UpdateOldOperators(eigVals, identityEnv, basket[step+1], 
                                                                                    operators, rotation, bondAntiSymmzer, corrOperatorDict
                                                                                   )
 
         # define the qbit operators for the new sites
-        for site in newSitesFlow[step+1] 
+        @time for site in newSitesFlow[step+1] 
             operators[("+", [site])] = kron(bondAntiSymmzer, OperatorMatrix(newBasis, [("+", [site - length(currentSites)], 1.0)]))
             operators = CreateDNH(operators, site)
         end
 
         # create new product operators that involve the new sites
-        for operator in create[step+1]
-            operators = CreateProductOperator(operator, operators; newSites=newSitesFlow[step+1])
+        @time operators = @distributed merge for operator in create[step+1]
+            CreateProductOperator(operator, operators; newSites=newSitesFlow[step+1])
         end
+        println("---")
 
         # construct any new correlation operators that became available at this step
         for (name, correlationDef) in correlationDefDict
@@ -586,9 +588,9 @@ function IterDiag(
     end
     
     if !isempty(specFuncNames)
-        return savePaths, resultsDict, specFuncOperators
+        return savePaths, results, specFuncOperators
     else
-        return savePaths, resultsDict
+        return savePaths, results
     end
 end
 export IterDiag
@@ -603,6 +605,8 @@ function IterDiag(
     # (m,N) -> m == N ## maximally polarised states
     corrOccReq::Union{Nothing,Function}=nothing,
     corrMagzReq::Union{Nothing,Function}=nothing,
+    excOccReq::Union{Nothing,Function}=nothing,
+    excMagzReq::Union{Nothing,Function}=nothing,
     symmetries::Vector{Char}=Char[],
     degenTol::Float64=1e-10,
     dataDir::String="data-iterdiag",
@@ -613,6 +617,7 @@ function IterDiag(
     silent::Bool=false,
     maxMaxSize::Int64=0,
     calculateThroughout::Bool=false,
+    excludeLevels::Function=x -> false,
 )
     @assert maxMaxSize == 0 || maxMaxSize ≥ maxSize
 
@@ -743,7 +748,7 @@ function IterDiag(
     corrQuantumNoReq = CombineRequirements(corrOccReq, corrMagzReq)
 
     # perform the actual iterative diagonalisation. savePaths
-    # contains the filepaths where data is saved; resultsDict
+    # contains the filepaths where data is saved; results
     # contains energyPerSite and correlation values;
     # specFuncOperators contains the updated forms of the
     # operators that will be used for spectral function calculations.
@@ -765,20 +770,29 @@ function IterDiag(
     # their original names, because they had been passed into 
     # the iterative diagonaliser with random names in order to
     # avoid overwriting.
-    savePaths, resultsDict = output[1], output[2]
-    specFuncOperatorsConsolidated = nothing
+    savePaths, results = output[1], output[2]
+    #=specFuncOperatorsConsolidated = nothing=#
+    results["specCoeffs"] = Dict{String, Vector{NTuple{2, Number}}}()
     if !isempty(specFuncToCorrMap)
         specFuncOperators = output[3]
-        specFuncOperatorsConsolidated = Dict{String,Vector{Matrix{Float64}}}()
+        #=specFuncOperatorsConsolidated = Dict{String,Vector{Matrix{Float64}}}()=#
         for (name, corrNameVector) in specFuncToCorrMap
-            specFuncOperatorsConsolidated[name] = Matrix{Float64}[]
+            specFuncOperator = Matrix{Float64}[]
             for operatorsStep in zip([specFuncOperators[corrName] for corrName in corrNameVector]...)
                 if any(!isnothing, operatorsStep)
-                    push!(specFuncOperatorsConsolidated[name], sum(filter(o -> !isnothing(o), operatorsStep)))
+                    push!(specFuncOperator, sum(filter(o -> !isnothing(o), operatorsStep)))
                 end
             end
+            results["specCoeffs"][name] = IterSpectralCoeffs(savePaths, specFuncOperator;
+                                            degenTol=degenTol, occReq=occReq,
+                                            magzReq=magzReq, excOccReq=excOccReq,
+                                            excMagzReq=excMagzReq, 
+                                            excludeLevels=excludeLevels,
+                                            silent=silent,
+                                           )
         end
     end
+
 
     # if vne was requested, we now have the various matrix elements
     # of the RDM; all that's left is to reconstruct the RDM. For this,
@@ -789,7 +803,7 @@ function IterDiag(
     for (name, sites) in vneDefDict
         reducedDM = zeros(2^length(sites), 2^length(sites))
         for ((i, j), corrName) in vneOperatorToCorrMap[name]
-            matrixElement = resultsDict[corrName]
+            matrixElement = results[corrName]
             reducedDM[i, j] = matrixElement
             reducedDM[j, i] = matrixElement'
         end
@@ -806,7 +820,7 @@ function IterDiag(
         # diagonalise RDM and use non-zero eigenvalues
         # to calculate VNE
         rdmEigVals = filter(>(0), eigvals(Hermitian(reducedDM)))
-        resultsDict[name] = -sum(rdmEigVals .* log.(rdmEigVals))
+        results[name] = -sum(rdmEigVals .* log.(rdmEigVals))
     end
 
     # in the block above, we have already all VNE, including those
@@ -815,32 +829,25 @@ function IterDiag(
     # combine them appropriately.
     for name in keys(mutInfoDefDict)
         vneNames = mutInfoToVneMap[name]
-        resultsDict[name] = resultsDict[vneNames[1]] + resultsDict[vneNames[2]] - resultsDict[vneNames[3]]
-        if resultsDict[name] < -1e-10
+        results[name] = results[vneNames[1]] + results[vneNames[2]] - results[vneNames[3]]
+        if results[name] < -1e-10
             exitCode = 2
         end
     end
+    results["exitCode"] = exitCode
 
     # delete all keys that were not specifically requested.
     # this deletes intermediate quantities that might have
     # been generated in the process.
-    for name in keys(resultsDict)
+    for name in keys(results)
         if name ∉ retainKeys
-            delete!(resultsDict, name)
+            delete!(results, name)
         end
     end
 
-    # if there's entanglement involved, return exit code. if spectral function,
-    # return that. Otherwise just return the results.
-    if isempty(vneDefDict) && isempty(mutInfoDefDict) && isnothing(specFuncOperatorsConsolidated)
-        return savePaths, resultsDict
-    elseif (!isempty(vneDefDict) || !isempty(mutInfoDefDict)) && isnothing(specFuncOperatorsConsolidated)
-        return savePaths, resultsDict, exitCode
-    elseif isempty(vneDefDict) && isempty(mutInfoDefDict) && !isnothing(specFuncOperatorsConsolidated)
-        return savePaths, resultsDict, specFuncOperatorsConsolidated
-    elseif (!isempty(vneDefDict) || !isempty(mutInfoDefDict)) && !isnothing(specFuncOperatorsConsolidated)
-        return savePaths, resultsDict, exitCode, specFuncOperatorsConsolidated
-    end
+    rm.(savePaths, force=true)
+
+    return results
 end
 export IterDiag
 
@@ -862,27 +869,19 @@ function IterSpecFunc(
         excludeLevels::Function=x -> false,
         normalise::Bool=true,
     )
-    specCoeffsComplete = IterSpectralCoeffs(savePaths, specFuncOperators;
+    specCoeffs = IterSpectralCoeffs(savePaths, specFuncOperators;
                                             degenTol=degenTol, occReq=occReq,
                                             magzReq=magzReq, excOccReq=excOccReq,
                                             excMagzReq=excMagzReq, 
                                             excludeLevels=excludeLevels,
                                             silent=silent,
                                            )
-    specFuncMatrix = zeros(length(specFuncOperators), length(freqValues))
-    for (index, specCoeffs) in enumerate(specCoeffsComplete)
-        specFuncMatrix[index, :] .= SpecFunc(specCoeffs, freqValues, standDev;
-                                            normalise=normalise, silent=silent, 
-                                            broadFuncType=broadFuncType
-                                           )
-    end
-    totalSpecFunc = sum(specFuncMatrix, dims=1) |> vec
+    totalSpecFunc = SpecFunc(specCoeffs, freqValues, standDev;
+                             normalise=normalise, silent=silent, 
+                             broadFuncType=broadFuncType
+                            )
     @assert totalSpecFunc |> length == freqValues |> length
-    if returnEach
-        return totalSpecFunc, specFuncMatrix
-    else
-        return totalSpecFunc
-    end
+    return totalSpecFunc
 end
 export IterSpecFunc
 
@@ -902,7 +901,7 @@ function IterSpectralCoeffs(
     quantumNoReq = CombineRequirements(occReq, magzReq)
     excQuantumNoReq = CombineRequirements(excOccReq, excMagzReq)
 
-    specCoeffsComplete = Vector{NTuple{2, Float64}}[]
+    specCoeffsComplete = NTuple{2, Number}[]
     @showprogress desc="Iter Spec Coeffs" enabled=!silent for index in length(savePaths)-length(specFuncOperators):length(savePaths)-1
         savePath = savePaths[index]
         data = deserialize(savePath)
@@ -938,7 +937,7 @@ function IterSpectralCoeffs(
         specCoeffs = SpectralCoefficients(minimalEigVecs, minimalEigVals, operator; 
                                           excludeLevels=excludeLevels, degenTol=degenTol, silent=true,
                                          )
-        push!(specCoeffsComplete, specCoeffs)
+        append!(specCoeffsComplete, specCoeffs)
     end
     return specCoeffsComplete
 end
