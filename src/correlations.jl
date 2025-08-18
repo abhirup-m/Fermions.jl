@@ -1,3 +1,5 @@
+using ProgressMeter
+
 """
     GenCorrelation(state, operator)
 
