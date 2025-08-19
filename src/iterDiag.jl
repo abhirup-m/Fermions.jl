@@ -78,7 +78,7 @@ or more are new indices, then first track the composite operators for the
 old and new sets, then tensor multiply these two composite operators.
 """
 
-@everywhere function CreateProductOperator(
+function CreateProductOperator(
         productOperatorDef::Tuple{String,Vector{Int64}},
         operators::Dict{Tuple{String,Vector{Int64}}, Matrix{Float64}};
         newSites::Vector{Int64}=Int64[],
@@ -474,7 +474,7 @@ function IterDiag(
         end
         
         # get spectrum
-        @time eigVals, rotation, quantumNos = Diagonalise(hamltMatrix, quantumNos)
+        eigVals, rotation, quantumNos = Diagonalise(hamltMatrix, quantumNos)
 
         if step == length(hamltFlow)
             # if this is the last step, save data and calculate any correlations
@@ -543,21 +543,20 @@ function IterDiag(
         end
 
         # rotate and enlarge existing operators
-        @time hamltMatrix, operators, bondAntiSymmzer, corrOperatorDict = UpdateOldOperators(eigVals, identityEnv, basket[step+1], 
+        hamltMatrix, operators, bondAntiSymmzer, corrOperatorDict = UpdateOldOperators(eigVals, identityEnv, basket[step+1], 
                                                                                    operators, rotation, bondAntiSymmzer, corrOperatorDict
                                                                                   )
 
         # define the qbit operators for the new sites
-        @time for site in newSitesFlow[step+1] 
+        for site in newSitesFlow[step+1] 
             operators[("+", [site])] = kron(bondAntiSymmzer, OperatorMatrix(newBasis, [("+", [site - length(currentSites)], 1.0)]))
             operators = CreateDNH(operators, site)
         end
 
         # create new product operators that involve the new sites
-        @time operators = @distributed merge for operator in create[step+1]
+        for operator in create[step+1]
             CreateProductOperator(operator, operators; newSites=newSitesFlow[step+1])
         end
-        println("---")
 
         # construct any new correlation operators that became available at this step
         for (name, correlationDef) in correlationDefDict
