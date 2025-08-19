@@ -753,24 +753,35 @@ function IterDiag(
     # operators that will be used for spectral function calculations.
     specFuncNames = String[]
     append!(specFuncNames, vcat(values(specFuncToCorrMap)...))
-    output = IterDiag(hamltFlow, maxSize, symmetries,
-                                                         correlationDefDict,
-                                                         quantumNoReq, 
-                                                         corrQuantumNoReq,
-                                                         degenTol,
-                                                         dataDir,
-                                                         silent,
-                                                         specFuncNames,
-                                                         maxMaxSize,
-                                                         calculateThroughout,
-                                                        )
+    output = IterDiag(hamltFlow, 
+                      maxSize, 
+                      symmetries,
+                      correlationDefDict,
+                      quantumNoReq, 
+                      corrQuantumNoReq,
+                      degenTol,
+                      dataDir,
+                      silent,
+                      specFuncNames,
+                      maxMaxSize,
+                      calculateThroughout,
+                     )
 
     # if specFuncOperators was requested, convert them back to 
     # their original names, because they had been passed into 
     # the iterative diagonaliser with random names in order to
     # avoid overwriting.
     savePaths, results = output[1], output[2]
-    #=specFuncOperatorsConsolidated = nothing=#
+
+    # delete all keys that were not specifically requested.
+    # this deletes intermediate quantities that might have
+    # been generated in the process.
+    for name in keys(results)
+        if name ∉ retainKeys
+            delete!(results, name)
+        end
+    end
+
     results["specCoeffs"] = Dict{String, Vector{NTuple{2, Number}}}()
     if !isempty(specFuncToCorrMap)
         specFuncOperators = output[3]
@@ -834,15 +845,6 @@ function IterDiag(
         end
     end
     results["exitCode"] = exitCode
-
-    # delete all keys that were not specifically requested.
-    # this deletes intermediate quantities that might have
-    # been generated in the process.
-    for name in keys(results)
-        if name ∉ retainKeys
-            delete!(results, name)
-        end
-    end
 
     rm.(savePaths, force=true)
 
