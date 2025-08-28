@@ -773,15 +773,6 @@ function IterDiag(
     # avoid overwriting.
     savePaths, results = output[1], output[2]
 
-    # delete all keys that were not specifically requested.
-    # this deletes intermediate quantities that might have
-    # been generated in the process.
-    for name in keys(results)
-        if name ∉ retainKeys
-            delete!(results, name)
-        end
-    end
-
     results["specCoeffs"] = Dict{String, Vector{NTuple{2, Number}}}()
     if !isempty(specFuncToCorrMap)
         specFuncOperators = output[3]
@@ -844,6 +835,16 @@ function IterDiag(
             exitCode = 2
         end
     end
+
+    # delete all keys that were not specifically requested.
+    # this deletes intermediate quantities that might have
+    # been generated in the process.
+    for name in keys(results)
+        if name ∉ retainKeys
+            delete!(results, name)
+        end
+    end
+
     results["exitCode"] = exitCode
 
     rm.(savePaths, force=true)
