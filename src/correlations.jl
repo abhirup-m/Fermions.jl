@@ -416,7 +416,7 @@ function SpecFuncVariational(
         
     function RootFunction(standDev)
         
-        centerSpecFuncArr = pmap(coeffs -> SpecFunc(coeffs, freqValues, standDev;
+        centerSpecFuncArr = map(coeffs -> SpecFunc(coeffs, freqValues, standDev;
                                                normalise=false, silent=silent,
                                                broadFuncType=broadFuncType
                                               ),
