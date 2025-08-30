@@ -138,8 +138,8 @@ julia> display(X)
 ```
 """
 function Spectrum(
-    operator::Vector{Tuple{String,Vector{Int64},Float64}},
-    basisStates::Vector{Dict{BitVector,Float64}};
+    operator::Vector{Tuple{String,Vector{Int64},Number}},
+    basisStates::Vector{Dict{BitVector, Number}};
     diagElements::Vector{Float64}=Float64[],
     tolerance::Float64=1e-14,
     assumeHerm::Bool=true,
@@ -189,8 +189,8 @@ Dict{Tuple{Int64}, Vector{Dict{BitVector, Float64}}} with 3 entries:
 ```
 """
 function Spectrum(
-    operator::Vector{Tuple{String,Vector{Int64},Float64}},
-    basisStates::Vector{Dict{BitVector,Float64}},
+    operator::Vector{Tuple{String,Vector{Int64}, Number}},
+    basisStates::Vector{Dict{BitVector, Number}},
     symmetries::Vector{Char};
     diagElements::Vector{Float64}=Float64[],
     tolerance::Float64=1e-14,
@@ -201,16 +201,16 @@ function Spectrum(
     end
 
     classifiedBasis = ClassifyBasis(basisStates, symmetries)
-    classifiedEigvals = Dict(k => Float64[] for k in keys(classifiedBasis))
-    classifiedEigvecs = Dict(k => Dict{BitVector,Float64}[] for k in keys(classifiedBasis))
+    classifiedEigvals = Dict(k => Number[] for k in keys(classifiedBasis))
+    classifiedEigvecs = Dict(k => Dict{BitVector,Number}[] for k in keys(classifiedBasis))
     Threads.@threads for (k, basis) in collect(classifiedBasis)
         classifiedEigvals[k], classifiedEigvecs[k] = Spectrum(operator, basis; diagElements=diagElements, tolerance=tolerance)
     end
     if classify
         return classifiedEigvals, classifiedEigvecs
     else
-        allEigvals = Float64[]
-        allEigvecs = Dict{BitVector,Float64}[]
+        allEigvals = Number[]
+        allEigvecs = Dict{BitVector,Number}[]
         for k in keys(classifiedBasis)
             append!(allEigvecs, classifiedEigvecs[k])
             append!(allEigvals, classifiedEigvals[k])
@@ -250,8 +250,8 @@ Dict{Tuple{Int64}, Vector{Dict{BitVector, Float64}}} with 3 entries:
 ```
 """
 function Spectrum(
-    operator::Vector{Tuple{String,Vector{Int64},Float64}},
-    classifiedBasis::Union{Dict{Tuple{Int64}, Vector{Dict{BitVector,Float64}}}, Dict{Tuple{Int64, Int64}, Vector{Dict{BitVector,Float64}}}};
+    operator::Vector{Tuple{String,Vector{Int64}, Number}},
+    classifiedBasis::Union{Dict{Tuple{Int64}, Vector{Dict{BitVector,Number}}}, Dict{Tuple{Int64, Int64}, Vector{Dict{BitVector,Number}}}};
     diagElements::Dict{}=Dict(),
     tolerance::Float64=1e-14,
     )
@@ -259,8 +259,8 @@ function Spectrum(
         @assert all(x -> true, [length(E) == size(classifiedBasis[k])[1] for (k,E) in diagElements])
     end
 
-    classifiedEigvals = Dict(k => Float64[] for k in keys(classifiedBasis))
-    classifiedEigvecs = Dict(k => Dict{BitVector,Float64}[] for k in keys(classifiedBasis))
+    classifiedEigvals = Dict(k => Number[] for k in keys(classifiedBasis))
+    classifiedEigvecs = Dict(k => Dict{BitVector,Number}[] for k in keys(classifiedBasis))
     Threads.@threads for (k, basis) in collect(classifiedBasis)
         if k in keys(diagElements)
             classifiedEigvals[k], classifiedEigvecs[k] = Spectrum(operator, basis; diagElements=diagElements[k], tolerance=tolerance)
@@ -274,9 +274,9 @@ export Spectrum
 
 
 function BandStructure(
-        hamiltonian::Vector{Tuple{String,Vector{Int64},Float64}},
-        basisStates::Vector{Dict{BitVector,Float64}},
-        eigenOperator::Vector{Tuple{String,Vector{Int64},Float64}};
+        hamiltonian::Vector{Tuple{String,Vector{Int64},Number}},
+        basisStates::Vector{Dict{BitVector,Number}},
+        eigenOperator::Vector{Tuple{String,Vector{Int64},Number}};
         dimensionSymmetry::Int64=-1,
         tolerance::Float64=1e-10
     )
@@ -285,7 +285,7 @@ function BandStructure(
     if dimensionSymmetry < 0
         dimensionSymmetry = length(eigenVals)
     end
-    classifiedEnergies = Dict{Int64, Vector{Float64}}()
+    classifiedEnergies = Dict{Int64, Vector{Number}}()
     count = 1
     while count ≤ length(eigenStates)
         degenerateSubspace = findall(Ei -> abs(Ei - eigenVals[count]) < tolerance, eigenVals)
@@ -313,8 +313,8 @@ export BandStructure
 
 
 function IsEigenState(
-        state::Dict{BitVector,Float64},
-        operator::Vector{Tuple{String,Vector{Int64},Float64}};
+        state::Dict{BitVector,Number},
+        operator::Vector{Tuple{String,Vector{Int64}, Number}};
         tolerance::Float64=1e-15,
     )
     @assert !isempty(state) 
