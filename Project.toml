@@ -1,9 +1,10 @@
 name = "Fermions"
 uuid = "fea79142-a24c-4a65-a400-748d472cf2a8"
 authors = ["abhirup-m <mukherjeeabhirup44@gmail.com>"]
-version = "0.1.0"
+version = "0.5.0"
 
 [deps]
+DSP = "717857b8-e6f2-59f4-9121-6e50c889abd2"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 ProgressMeter = "92933f4c-e287-5a05-a399-4b506db050ca"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
