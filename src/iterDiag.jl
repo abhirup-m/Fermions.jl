@@ -414,7 +414,10 @@ function IterDiag(
     quantumNos = QuantumNosForBasis(currentSites, symmetries, initBasis)
 
     # get the filenames for saving data
-    savePaths = SetupDataWrite(dataDir, hamltFlow, initBasis, currentSites, symmetries)
+    savePaths = nothing 
+    if !isempty(specFuncNames)
+        savePaths = SetupDataWrite(dataDir, hamltFlow, initBasis, currentSites, symmetries)
+    end
 
     # get the initial matrices, the sequence of new sites
     # being added at each step, and the various operators
@@ -478,15 +481,17 @@ function IterDiag(
 
         if step == length(hamltFlow)
             # if this is the last step, save data and calculate any correlations
-            serialize(savePaths[step], Dict("basis" => rotation,
-                                            "eigVals" => eigVals,
-                                            "quantumNos" => quantumNos,
-                                            "currentSites" => currentSites,
-                                            "newSites" => newSitesFlow[step],
-                                            "bondAntiSymmzer" => bondAntiSymmzer,
-                                            "results" => results,
-                                           )
-                     )
+            if !isempty(specFuncNames)
+                serialize(savePaths[step], Dict("basis" => rotation,
+                                                "eigVals" => eigVals,
+                                                "quantumNos" => quantumNos,
+                                                "currentSites" => currentSites,
+                                                "newSites" => newSitesFlow[step],
+                                                "bondAntiSymmzer" => bondAntiSymmzer,
+                                                "results" => results,
+                                               )
+                         )
+            end
 
             results["energyPerSite"] = eigVals[1]/maximum(currentSites)
 
@@ -523,7 +528,9 @@ function IterDiag(
                         "results" => results,
                        )
 
-        serialize(savePaths[step], saveDict)
+        if !isempty(specFuncNames)
+            serialize(savePaths[step], saveDict)
+        end
 
         # truncate the spectrum
         if length(eigVals) > div(maxSize, 2^length(newSitesFlow[step+1]))
@@ -587,9 +594,9 @@ function IterDiag(
     end
     
     if !isempty(specFuncNames)
-        return savePaths, results, specFuncOperators
+        return results, savePaths, specFuncOperators
     else
-        return savePaths, results
+        return results
     end
 end
 export IterDiag
@@ -628,6 +635,9 @@ function IterDiag(
     retainKeys = ["energyPerSite"]
     for quant in [correlationDefDict, vneDefDict, mutInfoDefDict, specFuncDefDict]
         append!(retainKeys, [k for k in keys(quant)])
+    end
+    if !isempty(specFuncDefDict)
+        append!(retainKeys, ["specFuncOperators", "savePaths"])
     end
 
     # ensure that all the keys are unique,
@@ -768,20 +778,24 @@ function IterDiag(
     # their original names, because they had been passed into 
     # the iterative diagonaliser with random names in order to
     # avoid overwriting.
-    savePaths, results = output[1], output[2]
+    if !isempty(specFuncNames)
+        results = output[1]
+    else
+        results = output
+    end
 
-    results["specCoeffs"] = Dict{String, Vector{NTuple{2, Number}}}()
     if !isempty(specFuncToCorrMap)
+        results["savePaths"] = output[2]
         specFuncOperators = output[3]
-        #=specFuncOperatorsConsolidated = Dict{String,Vector{Matrix{Float64}}}()=#
+        specFuncOperatorsConsolidated = Dict{String,Vector{Matrix{Float64}}}()
         for (name, corrNameVector) in specFuncToCorrMap
-            specFuncOperator = Matrix{Float64}[]
+            specFuncOperatorsConsolidated[name] = Matrix{Float64}[]
             for operatorsStep in zip([specFuncOperators[corrName] for corrName in corrNameVector]...)
                 if any(!isnothing, operatorsStep)
-                    push!(specFuncOperator, sum(filter(o -> !isnothing(o), operatorsStep)))
+                    push!(specFuncOperatorsConsolidated[name], sum(filter(o -> !isnothing(o), operatorsStep)))
                 end
             end
-            results["specCoeffs"][name] = IterSpectralCoeffs(savePaths, specFuncOperator;
+            results[name] = IterSpectralCoeffs(results["savePaths"], specFuncOperatorsConsolidated[name];
                                             degenTol=degenTol, occReq=occReq,
                                             magzReq=magzReq, excOccReq=excOccReq,
                                             excMagzReq=excMagzReq, 
@@ -789,6 +803,7 @@ function IterDiag(
                                             silent=silent,
                                            )
         end
+        results["specFuncOperators"] = specFuncOperatorsConsolidated
     end
 
 
@@ -844,8 +859,6 @@ function IterDiag(
 
     results["exitCode"] = exitCode
 
-    rm.(savePaths, force=true)
-
     return results
 end
 export IterDiag
@@ -900,7 +913,7 @@ function IterSpectralCoeffs(
     quantumNoReq = CombineRequirements(occReq, magzReq)
     excQuantumNoReq = CombineRequirements(excOccReq, excMagzReq)
 
-    specCoeffsComplete = NTuple{2, Number}[]
+    specCoeffsComplete = NTuple{2, Float64}[]
     @showprogress desc="Iter Spec Coeffs" enabled=!silent for index in length(savePaths)-length(specFuncOperators):length(savePaths)-1
         savePath = savePaths[index]
         data = deserialize(savePath)

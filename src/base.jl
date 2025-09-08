@@ -277,8 +277,8 @@ function ApplyOperator(
     @assert !isempty(operator)
     @assert maximum([maximum(positions) for (_, positions, _) in operator]) ≤ length.(keys(incomingState))[1]
 
-    return mergewith(+, fetch.([Threads.@spawn ApplyOperatorChunk(opType, opMembers, opStrength, copy(incomingState); tolerance=tolerance) 
-                                for (opType, opMembers, opStrength) in operator])...)
+    return mergewith(+, [ApplyOperatorChunk(opType, opMembers, opStrength, copy(incomingState); tolerance=tolerance) 
+                                for (opType, opMembers, opStrength) in operator]...)
 
     return outgoingState
 end

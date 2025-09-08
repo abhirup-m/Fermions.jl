@@ -1,5 +1,9 @@
 #### Iterative diagonalisation solution of the 1D Hubbard model ####
-using Plots, Measures, Fermions
+using Plots, Measures
+include("../src/base.jl")
+include("../src/constants.jl")
+include("../src/correlations.jl")
+include("../src/iterDiag.jl")
 
 
 function Hubbard1D(
@@ -15,9 +19,13 @@ function Hubbard1D(
     return hamiltonian
 end
 
-sites = 30
-maxSize = 3000
+sites = 20
+maxSize = 1000
 hubbardHamiltonian = Hubbard1D(2.0, sites)
 hamiltonianFamily = MinceHamiltonian(hubbardHamiltonian, collect(2:sites))
-savePaths, resultsDict = IterDiag(hamiltonianFamily, maxSize; correlationDefDict=Dict("nn-$(i)-$(i+1)"=> [("nn", [i, i+1], 1.0)] for i in 1:(sites-1)))
+resultsDict = IterDiag(hamiltonianFamily, maxSize; correlationDefDict=Dict("nn-$(i)-$(i+1)"=> [("nn", [i, i+1], 1.0)] for i in 1:(sites-1)))
+display(resultsDict)
+resultsDict = IterDiag(hamiltonianFamily, maxSize; specFuncDefDict=Dict("any" => [("+", [1], 1.0),]))
+display(resultsDict)
+resultsDict = IterDiag(hamiltonianFamily, maxSize; correlationDefDict=Dict("nn-$(i)-$(i+1)"=> [("nn", [i, i+1], 1.0)] for i in 1:(sites-1)), specFuncDefDict=Dict("any" => [("+", [1], 1.0),]))
 display(resultsDict)
