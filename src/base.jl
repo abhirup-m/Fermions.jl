@@ -25,13 +25,13 @@ julia> BasisStates(4, [2], [0], x->sum(x[1:2])==1)
 ```
 """
 function BasisStates(
-        numLevels,
-        totOccReq,
-        magzReq,
-        localCriteria
+        numLevels::Int64, 
+        totOccReq::Vector{Int64},
+        magzReq::Vector{Int64},
+        localCriteria::Function
     )
     @assert !isempty(totOccReq) && !isempty(magzReq)
-    basis = Dict{BitVector, ComplexF64}[]
+    basis = Dict{BitVector, Number}[]
     for decimalNum in 0:2^numLevels-1
         config = digits(decimalNum, base=2, pad=numLevels) |> reverse
         if !isempty(totOccReq)
@@ -83,10 +83,10 @@ julia> BasisStates(2; magzReq=0)
 ```
 """
 function BasisStates(
-        numLevels;
-        totOccReq=nothing,
-        magzReq=nothing,
-        localCriteria=x -> true
+        numLevels::Int64;
+        totOccReq::Union{Vector{Int64}, Int64, Nothing}=nothing,
+        magzReq::Union{Vector{Int64}, Int64, Nothing}=nothing,
+        localCriteria::Function=x -> true
     )
     if isnothing(totOccReq)
         totOccReq = collect(0:numLevels)
@@ -127,11 +127,11 @@ julia> BasisStates1p(10)
 ```
 """
 function BasisStates1p(
-        numLevels,
+        numLevels::Int64, 
     )
     config = BitVector(fill(0, numLevels))
     config[1] = 1
-    basis = Dict{BitVector, ComplexF64}[]
+    basis = Dict{BitVector, Number}[]
     for shift in 1:numLevels
         push!(basis, Dict(copy(config) => 1.0))
         circshift!(config, 1)
@@ -158,10 +158,7 @@ julia> TransformBit(Bool(1), '-')
 (0, 1)
 ```
 """
-function TransformBit(
-        qubit,
-        operator
-    )
+function TransformBit(qubit::Bool, operator::Char)
     @assert operator in ('n', 'h', '+', '-')
     if operator == 'n'
         return 0 + qubit, 0 + qubit
@@ -198,13 +195,13 @@ Dict{BitVector, Float64} with 1 entry:
 ```
 """
 function ApplyOperatorChunk(
-        opType,
-        opMembers,
-        opStrength,
-        incomingState;
-        tolerance=1e-16
+        opType::String,
+        opMembers::Vector{Int64},
+        opStrength::Number,
+        incomingState::Dict{BitVector, Number};
+        tolerance::Float64=1e-16
     )
-    outgoingState = Dict{BitVector, ComplexF64}()
+    outgoingState = Dict{BitVector, Number}()
     for i in eachindex(opMembers)[end:-1:2]
         if opMembers[i] ∈ opMembers[i+1:end]
             continue
@@ -273,9 +270,9 @@ Dict{BitVector, Float64} with 2 entries:
 ```
 """
 function ApplyOperator(
-        operator,
-        incomingState;
-        tolerance=1e-16
+        operator::Vector{Tuple{String,Vector{Int64}, Number}},
+        incomingState::Dict{BitVector, Number};
+        tolerance::Float64=1e-16
     )
     @assert !isempty(operator)
     @assert maximum([maximum(positions) for (_, positions, _) in operator]) ≤ length.(keys(incomingState))[1]
@@ -316,11 +313,11 @@ julia> OperatorMatrix(basis, operator)
 ```
 """
 function OperatorMatrix(
-        basisStates,
-        operator;
-        tolerance=1e-16,
+        basisStates::Vector{Dict{BitVector, Number}},
+        operator::Vector{Tuple{String,Vector{Int64}, Number}};
+        tolerance::Float64=1e-16,
     )
-    operatorMatrix = Matrix{ComplexF64}(zeros(length(basisStates), length(basisStates)))
+    operatorMatrix = Matrix{Number}(zeros(length(basisStates), length(basisStates)))
     newStates = fetch.([Threads.@spawn ApplyOperator(operator, incomingState; tolerance=tolerance)
                         for incomingState in basisStates])
     Threads.@threads for incomingIndex in findall(!isempty, newStates)
@@ -355,8 +352,8 @@ julia> StateOverlap(state1, state2)
 ```
 """
 function StateOverlap(
-        state1,
-        state2
+        state1::Dict{BitVector, Number}, 
+        state2::Dict{BitVector, Number}
     )
     overlap = 0.
     keys2 = keys(state2)
@@ -378,8 +375,8 @@ if the basis is {b_i} and the state is {b_1=>c_1, b_2=>c_2, ...},
 the function returns [c_1, c_2, ...].
 """
 function ExpandIntoBasis(
-        state,
-        basisStates,
+        state::Dict{BitVector, Number}, 
+        basisStates::Vector{Dict{BitVector, Number}},
     )
     coefficients = zeros(length(basisStates))
     for (index, bstate) in enumerate(basisStates)
@@ -397,8 +394,8 @@ Returns the symmetry sector of the provided state. If symmetries only
 has 'N'('Z'), returns the total occupancy (total magnetization).
 """
 function GetSector(
-        state,
-        symmetries,
+        state::Dict{BitVector, Number}, 
+        symmetries::Vector{Char},
     )
     bstate = sort(collect(keys(state)), by=k->abs(state[k]))[end]
     totOcc = sum(bstate)
@@ -428,8 +425,8 @@ julia> fermions.roundTo(1.122323, 1e-3)
 ```
 """
 function RoundTo(
-        val,
-        tolerance
+        val::Union{Int64, Float64}, 
+        tolerance::Float64
     )
     return round(val, digits=trunc(Int, -log10(tolerance)))
 end
@@ -500,10 +497,10 @@ Dict{BitVector, Float64} with 2 entries:
 ```
 """
 function PermuteSites(
-        state::Dict{BitVector, ComplexF64},
+        state::Dict{BitVector, Number},
         permutation::Vector{Int64},
     )
-    newState = Dict{BitVector, ComplexF64}()
+    newState = Dict{BitVector, Number}()
     for (k,v) in state
         newBasisState, sign = PermuteSites(k, permutation)
         newState[newBasisState] = sign * v
@@ -525,8 +522,8 @@ julia> Dagger("+--+", [1,4,3,2])
  ```
 """
 function Dagger(
-        operator,
-        members,
+        operator::String,
+        members::Vector{Int64};
     )
     newOpType = reverse(operator)
     newOpType = replace(newOpType, '+' => '-', '-' => '+')
@@ -555,7 +552,7 @@ julia> Dagger(operator)
  ```
 """
 function Dagger(
-        operator,
+        operator::Vector{Tuple{String,Vector{Int64}, Number}};
     )
     for i in eachindex(operator)
         newOpType, newMembers = Dagger(operator[i][1:2]...)
@@ -586,8 +583,8 @@ julia> Dagger(operator)
  ```
 """
 function VacuumState(
-        basisStates;
-        tolerance=1e-14,
+        basisStates::Vector{Dict{BitVector, Number}};
+        tolerance::Float64=1e-14,
     )
     numSites = basisStates |> first |> keys |> first |> length
     numberOperators = [("n", [i], 1.) for i in 1:numSites]
@@ -602,9 +599,9 @@ export VacuumState
 
 
 function DoesCommute(
-        operatorLeft,
-        operatorRight,
-        basisStates;
+        operatorLeft::Vector{Tuple{String,Vector{Int64}, Number}},
+        operatorRight::Vector{Tuple{String,Vector{Int64}, Number}},
+        basisStates::Vector{Dict{BitVector, Number}};
         tolerance=1e-15,
     )
     matrixLeft = OperatorMatrix(basisStates, operatorLeft)

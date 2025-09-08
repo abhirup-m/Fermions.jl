@@ -21,7 +21,7 @@ julia> GenCorrelation(state, operator)
 ```
 """
 function GenCorrelation(
-        state::Dict{BitVector,ComplexF64},
+        state::Dict{BitVector,Float64},
         operator::Vector{Tuple{String,Vector{Int64},Float64}}
     )
     # state is of the form {|1>: c_1, |2>: c_2, ... |n>: c_n}.
@@ -39,8 +39,8 @@ Calculates the expectation value <state|operator|state>, where state and operato
 are accepted as vectors and matrices instead of dicts and bitvectors.
 """
 function GenCorrelation(
-        state::Vector{ComplexF64},
-        operator::Matrix{ComplexF64}
+        state::Vector{Float64},
+        operator::Matrix{Float64}
     )
     @assert length(state) == size(operator)[1]
     state ./= norm(state)
@@ -345,7 +345,7 @@ export ThermalAverage
 function SpectralCoefficients(
         eigVecs::Vector{Vector{Float64}},
         eigVals::Vector{Float64},
-        probes::Dict{String, Matrix{ComplexF64}};
+        probes::Dict{String,Matrix{Float64}};
         excludeLevels::Function=x->false,
         degenTol::Float64=0.,
         silent::Bool=false,

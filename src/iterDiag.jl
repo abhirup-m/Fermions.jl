@@ -80,7 +80,7 @@ old and new sets, then tensor multiply these two composite operators.
 
 function CreateProductOperator(
         productOperatorDef::Tuple{String,Vector{Int64}},
-        operators::Dict{Tuple{String,Vector{Int64}}, Matrix{Number}};
+        operators::Dict{Tuple{String,Vector{Int64}}, Matrix{Float64}};
         newSites::Vector{Int64}=Int64[],
     )
 
@@ -126,7 +126,7 @@ export CreateProductOperator
 Given c^† matrix, construct c matrix, c^†c matrix and c c^† matrix.
 """
 function CreateDNH(
-        operators::Dict{Tuple{String, Vector{Int64}}, Matrix{Number}},
+        operators::Dict{Tuple{String, Vector{Int64}}, Matrix{Float64}},
         site::Int64,
     )
     operators[("-", [site])] = operators[("+", [site])]'
@@ -166,7 +166,7 @@ for each vector in the basis.
 function QuantumNosForBasis(
         currentSites::Vector{Int64}, 
         symmetries::Vector{Char},
-        basisStates::Vector{Dict{BitVector, ComplexF64}},
+        basisStates::Vector{Dict{BitVector, Float64}},
     )
 
     # obtain the symmetry operators as requested.
@@ -207,7 +207,7 @@ function InitiateMatrices(currentSites, hamltFlow, initBasis)
 
     # create the c and cdaggers
     create, basket, newSitesFlow = UpdateRequirements(hamltFlow)
-    operators = Dict{Tuple{String, Vector{Int64}}, Matrix{Number}}()
+    operators = Dict{Tuple{String, Vector{Int64}}, Matrix{Float64}}()
     for site in currentSites 
         operators[("+", [site])] = OperatorMatrix(initBasis, [("+", [site], 1.0)])
         operators = CreateDNH(operators, site)
@@ -238,7 +238,7 @@ export SetupDataWrite
 Obtain spectrum of Hamiltonian, making use of symmetries if available.
 """
 function Diagonalise(
-        hamltMatrix::Matrix{ComplexF64},
+        hamltMatrix::Matrix{Float64},
         quantumNos::Union{Nothing, Vector{NTuple{1, Int64}}, Vector{NTuple{2, Int64}}},
     )
     # initialise matrix and vector to store eigenvectors and eigenvalues
@@ -283,7 +283,7 @@ keep the size manageable.
 """
 function TruncateSpectrum(
         corrQuantumNoReq::Union{Nothing,Function},
-        rotation::Matrix{ComplexF64},
+        rotation::Matrix{Float64},
         eigVals::Vector{Float64},
         maxSize::Int64,
         degenTol::Float64,
@@ -345,10 +345,10 @@ function UpdateOldOperators(
         eigVals::Vector{Float64}, 
         identityEnv::Diagonal{Bool, Vector{Bool}}, 
         newBasket::Vector{Tuple{String, Vector{Int64}}},
-        operators::Dict{Tuple{String, Vector{Int64}}, Matrix{Number}},
-        rotation::Matrix{ComplexF64}, 
-        bondAntiSymmzer::Matrix{ComplexF64},
-        corrOperatorDict::Dict{String, Union{Nothing, Matrix{Number}}},
+        operators::Dict{Tuple{String, Vector{Int64}}, Matrix{Float64}},
+        rotation::Matrix{Float64}, 
+        bondAntiSymmzer::Matrix{Float64},
+        corrOperatorDict::Dict{String, Union{Nothing, Matrix{Float64}}},
     )
 
     # expanded diagonal hamiltonian
@@ -439,7 +439,7 @@ function IterDiag(
     end
 
     # stores operators that are necessary for calculating correlations
-    corrOperatorDict = Dict{String, Union{Nothing, Matrix{Number}}}(name => nothing for name in keys(correlationDefDict))
+    corrOperatorDict = Dict{String, Union{Nothing, Matrix{Float64}}}(name => nothing for name in keys(correlationDefDict))
 
     # if any correlation operator can be calculated right away, do it
     for (name, correlationDef) in correlationDefDict
@@ -450,7 +450,7 @@ function IterDiag(
     end
 
     if !isempty(specFuncNames)
-        specFuncOperators = Dict{String, Vector{Union{Nothing, Matrix{Number}}}}(name => repeat([nothing], length(hamltFlow)) for name in specFuncNames)
+        specFuncOperators = Dict{String, Vector{Union{Nothing, Matrix{Float64}}}}(name => repeat([nothing], length(hamltFlow)) for name in specFuncNames)
     end
 
     # if any spectral function operators can be calculated right away, do it
@@ -527,13 +527,9 @@ function IterDiag(
 
         # truncate the spectrum
         if length(eigVals) > div(maxSize, 2^length(newSitesFlow[step+1]))
-            rotation, eigVals, quantumNos = TruncateSpectrum(quantumNoReq, 
-                                                             Matrix{ComplexF64}(rotation),
-                                                             eigVals, 
+            rotation, eigVals, quantumNos = TruncateSpectrum(quantumNoReq, rotation, eigVals, 
                                                              div(maxSize, 2^length(newSitesFlow[step+1])), 
-                                                             degenTol, 
-                                                             currentSites, 
-                                                             quantumNos, 
+                                                             degenTol, currentSites, quantumNos, 
                                                              div(maxMaxSize, 2^length(newSitesFlow[step+1])),
                                                             )
         end
@@ -547,13 +543,8 @@ function IterDiag(
         end
 
         # rotate and enlarge existing operators
-        hamltMatrix, operators, bondAntiSymmzer, corrOperatorDict = UpdateOldOperators(eigVals, 
-                                                                                       identityEnv, 
-                                                                                       basket[step+1], 
-                                                                                       operators, 
-                                                                                       Matrix{ComplexF64}(rotation),
-                                                                                       Matrix{ComplexF64}(bondAntiSymmzer),
-                                                                                       corrOperatorDict
+        hamltMatrix, operators, bondAntiSymmzer, corrOperatorDict = UpdateOldOperators(eigVals, identityEnv, basket[step+1], 
+                                                                                   operators, rotation, bondAntiSymmzer, corrOperatorDict
                                                                                   )
 
         # define the qbit operators for the new sites
@@ -782,16 +773,18 @@ function IterDiag(
     # avoid overwriting.
     savePaths, results = output[1], output[2]
 
+    results["specCoeffs"] = Dict{String, Vector{NTuple{2, Number}}}()
     if !isempty(specFuncToCorrMap)
         specFuncOperators = output[3]
+        #=specFuncOperatorsConsolidated = Dict{String,Vector{Matrix{Float64}}}()=#
         for (name, corrNameVector) in specFuncToCorrMap
-            specFuncOperator = Matrix{Number}[]
+            specFuncOperator = Matrix{Float64}[]
             for operatorsStep in zip([specFuncOperators[corrName] for corrName in corrNameVector]...)
                 if any(!isnothing, operatorsStep)
                     push!(specFuncOperator, sum(filter(o -> !isnothing(o), operatorsStep)))
                 end
             end
-            results[name] = IterSpectralCoeffs(savePaths, specFuncOperator;
+            results["specCoeffs"][name] = IterSpectralCoeffs(savePaths, specFuncOperator;
                                             degenTol=degenTol, occReq=occReq,
                                             magzReq=magzReq, excOccReq=excOccReq,
                                             excMagzReq=excMagzReq, 
@@ -863,7 +856,7 @@ export IterDiag
 
 function IterSpecFunc(
         savePaths::Vector{String},
-        specFuncOperators::Vector{Matrix{Number}},
+        specFuncOperators::Vector{Matrix{Float64}},
         freqValues::Vector{Float64},
         standDev::Union{Vector{Float64}, Float64};
         degenTol::Float64=0.,
@@ -897,7 +890,7 @@ export IterSpecFunc
 
 function IterSpectralCoeffs(
         savePaths::Vector{String},
-        specFuncOperators::Vector{Matrix{Number}};
+        specFuncOperators::Vector{Matrix{Float64}};
         degenTol::Float64=0.,
         occReq::Union{Nothing,Function}=nothing,
         magzReq::Union{Nothing,Function}=nothing,
@@ -942,7 +935,7 @@ function IterSpectralCoeffs(
             @assert abs(groundStateEnergy - minimum(minimalEigVals)) < 1e-10
         end
 
-        operator = Dict{String, Matrix{ComplexF64}}("create" => specFuncOperators[index], "destroy" => specFuncOperators[index]')
+        operator = Dict{String, Matrix{Float64}}("create" => specFuncOperators[index], "destroy" => specFuncOperators[index]')
         specCoeffs = SpectralCoefficients(minimalEigVecs, minimalEigVals, operator; 
                                           excludeLevels=excludeLevels, degenTol=degenTol, silent=true,
                                          )

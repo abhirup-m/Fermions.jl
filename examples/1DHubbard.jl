@@ -15,9 +15,9 @@ function Hubbard1D(
     return hamiltonian
 end
 
-sites = 10
-maxSize = 300
+sites = 30
+maxSize = 3000
 hubbardHamiltonian = Hubbard1D(2.0, sites)
 hamiltonianFamily = MinceHamiltonian(hubbardHamiltonian, collect(2:sites))
-results = IterDiag(hamiltonianFamily, maxSize; symmetries=['N'], correlationDefDict=Dict("nn-$(i)-$(i+1)"=> [("nn", [i, i+1], 1.0)] for i in 1:3:(sites-1)), specFuncDefDict=Dict("any" => [("+", [1], 1.0)]))
-display(results)
+savePaths, resultsDict = IterDiag(hamiltonianFamily, maxSize; correlationDefDict=Dict("nn-$(i)-$(i+1)"=> [("nn", [i, i+1], 1.0)] for i in 1:(sites-1)))
+display(resultsDict)
