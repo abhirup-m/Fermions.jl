@@ -643,6 +643,9 @@ function IterDiag(
     # otherwise one will be overwritten by another.
     @assert allunique(retainKeys)
 
+    # ensure that there's at least two Hamiltonians to iterate over
+    @assert length(hamltFlow) > 1
+
     # ensure that the symmetries are of the correct form (N and/or S),
     # and that the symmetry requirements are consistent with that
     # (the assert fails, for example, if we specify the occupancy
