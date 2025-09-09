@@ -25,8 +25,8 @@ function GenCorrelation(
         operator::Vector{Tuple{String,Vector{Int64},Float64}}
     )
     # state is of the form {|1>: c_1, |2>: c_2, ... |n>: c_n}.
-    intermStates = fetch.([Threads.@spawn ApplyOperator([term], state) for term in operator])
-    correlation = sum(fetch.([Threads.@spawn StateOverlap(state, intermState) for intermState in intermStates]))
+    intermStates = [ApplyOperator([term], state) for term in operator]
+    correlation = sum([StateOverlap(state, intermState) for intermState in intermStates])
     return correlation / sum(values(state) .^ 2)
 end
 export GenCorrelation

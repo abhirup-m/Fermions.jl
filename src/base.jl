@@ -318,10 +318,10 @@ function OperatorMatrix(
         tolerance::Float64=1e-16,
     )
     operatorMatrix = zeros(length(basisStates), length(basisStates))
-    newStates = fetch.([Threads.@spawn ApplyOperator(operator, incomingState; tolerance=tolerance)
-                        for incomingState in basisStates])
-    Threads.@threads for incomingIndex in findall(!isempty, newStates)
-        Threads.@threads for outgoingIndex in eachindex(basisStates)
+    newStates = [ApplyOperator(operator, incomingState; tolerance=tolerance)
+                        for incomingState in basisStates]
+    for incomingIndex in findall(!isempty, newStates)
+        for outgoingIndex in eachindex(basisStates)
             operatorMatrix[outgoingIndex, incomingIndex] = StateOverlap(basisStates[outgoingIndex], newStates[incomingIndex])
         end
     end

@@ -590,7 +590,6 @@ function IterDiag(
 
         # udpate progressbar
         next!(pbar; showvalues=[("Size", size(hamltMatrix))])
-        GC.gc()
     end
     
     if !isempty(specFuncNames)
