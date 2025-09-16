@@ -254,7 +254,12 @@ function Diagonalise(
             indices = findall(==(quantumNo), quantumNos)
 
             # diagonalise this smaller subHamiltonian
-            F = eigen(Hermitian(hamltMatrix[indices, indices]))
+            F = nothing
+            try
+                F = eigen(Hermitian(hamltMatrix[indices, indices]))
+            catch LAPACKException
+                F = eigen(Hermitian(hamltMatrix[indices, indices] .+ 1e-10))
+            end
             eigenVecs[indices, indices] .= F.vectors
             eigVals[indices] .= F.values
         end
@@ -268,7 +273,13 @@ function Diagonalise(
     else
 
         # if no symmetries, just diagonalise the whole matrix
-        F = eigen(Hermitian(hamltMatrix))
+        F = nothing
+        try
+            F = eigen(Hermitian(hamltMatrix))
+        catch LAPACKException
+            F = eigen(Hermitian(hamltMatrix .+ 1e-10))
+        end
+        #=F = eigen(Hermitian(hamltMatrix))=#
         eigenVecs .= F.vectors
         eigVals .= F.values
     end
