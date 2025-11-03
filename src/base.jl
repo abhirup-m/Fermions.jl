@@ -30,10 +30,12 @@ function BasisStates(
         magzReq::Vector{Int64},
         localCriteria::Function
     )
-    @assert !isempty(totOccReq) && !isempty(magzReq)
     basis = Dict{BitVector,Float64}[]
+    config = falses(numLevels)
     for decimalNum in 0:2^numLevels-1
-        config = digits(decimalNum, base=2, pad=numLevels) |> reverse
+        for bit in 1:numLevels
+            config[bit] = (decimalNum >> (numLevels - bit)) & 1 == 1
+        end
         if !isempty(totOccReq)
             totOcc = sum(config)
             if totOcc ∉ totOccReq
@@ -84,18 +86,14 @@ julia> BasisStates(2; magzReq=0)
 """
 function BasisStates(
         numLevels::Int64;
-        totOccReq::Union{Vector{Int64}, Int64, Nothing}=nothing,
-        magzReq::Union{Vector{Int64}, Int64, Nothing}=nothing,
+        totOccReq::Union{Vector{Int64}, Int64}=Int64[],
+        magzReq::Union{Vector{Int64}, Int64}=Int64[],
         localCriteria::Function=x -> true
     )
-    if isnothing(totOccReq)
-        totOccReq = collect(0:numLevels)
-    elseif typeof(totOccReq) == Int64
+    if typeof(totOccReq) == Int64
         totOccReq = [totOccReq]
     end
-    if isnothing(magzReq)
-        magzReq = collect(-div(numLevels, 2):numLevels - div(numLevels, 2))
-    elseif typeof(magzReq) == Int64
+    if typeof(magzReq) == Int64
         magzReq = [magzReq]
     end
     return BasisStates(numLevels, totOccReq, magzReq, localCriteria)
@@ -158,7 +156,7 @@ julia> TransformBit(Bool(1), '-')
 (0, 1)
 ```
 """
-function TransformBit(qubit::Bool, operator::Char)
+@inline function TransformBit(qubit::Bool, operator::Char)
     @assert operator in ('n', 'h', '+', '-')
     if operator == 'n'
         return 0 + qubit, 0 + qubit
@@ -194,7 +192,7 @@ Dict{BitVector, Float64} with 1 entry:
   [1, 0] => -0.05
 ```
 """
-function ApplyOperatorChunk(
+@inline function ApplyOperatorChunk(
         opType::String,
         opMembers::Vector{Int64},
         opStrength::Float64,
@@ -202,20 +200,24 @@ function ApplyOperatorChunk(
         tolerance::Float64=1e-16
     )
     outgoingState = Dict{BitVector,Float64}()
-    for i in eachindex(opMembers)[end:-1:2]
-        if opMembers[i] ∈ opMembers[i+1:end]
-            continue
-        end
-        if opType[i] == '+' || opType[i] == 'h'
-            filter!(p -> p[1][opMembers[i]] == 0, incomingState)
-        else
-            filter!(p -> p[1][opMembers[i]] == 1, incomingState)
-        end
-    end
+    outgoingBasisState = similar(first(keys(incomingState)))
     for (incomingBasisState, coefficient) in incomingState
 
+        skip = false
+        for i in eachindex(opMembers)[end:-1:2]
+            if opType[i] in ('+', 'h') && incomingBasisState[opMembers[i]] != 0
+                skip = true
+                break
+            elseif !(opType[i] in ('+', 'h')) && incomingBasisState[opMembers[i]] != 1
+                skip = true
+                break
+            end
+        end
+        if skip
+            continue
+        end
         newCoefficient = coefficient
-        outgoingBasisState = copy(incomingBasisState)
+        copyto!(outgoingBasisState, incomingBasisState)
 
         # for each basis state, obtain a modified state after applying the operator tuple
         for (siteIndex, operator) in zip(reverse(opMembers), reverse(opType))
@@ -226,17 +228,17 @@ function ApplyOperatorChunk(
             end
             # calculate the fermionic exchange sign by counting the number of
             # occupied states the operator has to "hop" over
-            exchangeSign = ifelse(operator in ['+', '-'], (-1)^sum(outgoingBasisState[1:siteIndex-1]), 1)
+            @inbounds @views exchangeSign = ifelse(operator in ['+', '-'], (-1)^sum(outgoingBasisState[1:siteIndex-1]), 1)
 
-            outgoingBasisState[siteIndex] = newQubit
+            @inbounds outgoingBasisState[siteIndex] = newQubit
             newCoefficient *= exchangeSign * factor
         end
 
         if abs(newCoefficient) > tolerance
             if haskey(outgoingState, outgoingBasisState)
-                outgoingState[outgoingBasisState] += opStrength * newCoefficient
+                @inbounds outgoingState[outgoingBasisState] += opStrength * newCoefficient
             else
-                outgoingState[outgoingBasisState] = opStrength * newCoefficient
+                @inbounds outgoingState[outgoingBasisState] = opStrength * newCoefficient
             end
         end
     end
@@ -277,9 +279,10 @@ function ApplyOperator(
     @assert !isempty(operator)
     @assert maximum([maximum(positions) for (_, positions, _) in operator]) ≤ length.(keys(incomingState))[1]
 
-    return mergewith(+, [ApplyOperatorChunk(opType, opMembers, opStrength, copy(incomingState); tolerance=tolerance) 
-                                for (opType, opMembers, opStrength) in operator]...)
-
+    outgoingState = empty(incomingState)
+    for (opType, opMembers, opStrength) in operator
+        mergewith!(+, outgoingState, ApplyOperatorChunk(opType, opMembers, opStrength, copy(incomingState); tolerance=tolerance))
+    end
     return outgoingState
 end
 export ApplyOperator
@@ -322,7 +325,7 @@ function OperatorMatrix(
                         for incomingState in basisStates]
     for incomingIndex in findall(!isempty, newStates)
         for outgoingIndex in eachindex(basisStates)
-            operatorMatrix[outgoingIndex, incomingIndex] = StateOverlap(basisStates[outgoingIndex], newStates[incomingIndex])
+            @inbounds operatorMatrix[outgoingIndex, incomingIndex] = StateOverlap(basisStates[outgoingIndex], newStates[incomingIndex])
         end
     end
     return operatorMatrix
@@ -351,15 +354,15 @@ julia> StateOverlap(state1, state2)
 -0.25
 ```
 """
-function StateOverlap(
+@inline function StateOverlap(
         state1::Dict{BitVector,Float64}, 
         state2::Dict{BitVector,Float64}
     )
     overlap = 0.
-    keys2 = keys(state2)
+    #=keys2 = keys(state2)=#
     for (key, val) in state1
-        if key ∈ keys2
-            overlap += val * state2[key]
+        if haskey(state2, key)
+            @inbounds overlap += val * state2[key]
         end
     end
     return overlap
@@ -380,7 +383,7 @@ function ExpandIntoBasis(
     )
     coefficients = zeros(length(basisStates))
     for (index, bstate) in enumerate(basisStates)
-        coefficients[index] = StateOverlap(bstate, state)
+        @inbounds coefficients[index] = StateOverlap(bstate, state)
     end
     return coefficients
 end
@@ -397,9 +400,18 @@ function GetSector(
         state::Dict{BitVector, Float64}, 
         symmetries::Vector{Char},
     )
-    bstate = sort(collect(keys(state)), by=k->abs(state[k]))[end]
+    pivotKey = nothing
+    pivotVal = -Inf
+    for (k,v) in state
+        if abs(v) > pivotVal
+            pivotVal = abs(v)
+            pivotKey = k
+        end
+    end
+    bstate = pivotKey
+    #=bstate = sort(collect(keys(state)), by=k->abs(state[k]))[end]=#
     totOcc = sum(bstate)
-    magz = sum(bstate[1:2:end]) - sum(bstate[2:2:end])
+    @views magz = sum(bstate[1:2:end]) - sum(bstate[2:2:end])
     if symmetries == ['N']
         return (totOcc,)
     elseif symmetries == ['Z']
@@ -424,7 +436,7 @@ julia> fermions.roundTo(1.122323, 1e-3)
 1.122
 ```
 """
-function RoundTo(
+@inline function RoundTo(
         val::Union{Int64, Float64}, 
         tolerance::Float64
     )

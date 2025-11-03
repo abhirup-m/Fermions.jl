@@ -3,7 +3,13 @@
 # some convoluted artificial Hamiltonians
 ####################################################
 
-using Fermions, BenchmarkTools
+using BenchmarkTools, ProgressMeter, LinearAlgebra
+include("../src/constants.jl")
+include("../src/base.jl")
+include("../src/eigen.jl")
+include("../src/correlations.jl")
+include("../src/eigenstateRG.jl")
+include("../src/iterDiag.jl")
 
 function Hamiltonian(num_sites, bandwidth)
     Ek_values = range(-bandwidth, stop=bandwidth, length=num_sites)
@@ -15,7 +21,7 @@ end
 
 @btime begin
     ########
-    # 3.995 s (2432089 allocations: 1.22 GiB)
+    # 132.223 ms (1270386 allocations: 99.08 MiB)
     ########
     
     num_sites = 4
@@ -34,9 +40,9 @@ end
 
 @btime begin
     ########
-    # 15.588 s (140439647 allocations: 7.30 GiB)
+    # 1.454 s (3550114 allocations: 382.20 MiB)
     ########
-    
+
     num_sites = 3
     bandwidth = 1
     hamiltonian = Hamiltonian(num_sites, bandwidth)
@@ -71,7 +77,7 @@ end
 
 @btime begin
     ########
-    # 10.209 s (345502 allocations: 21.27 GiB)
+    # 27.583 s (345207 allocations: 21.27 GiB)
     ########
     num_sites = 6
     bandwidth = 1

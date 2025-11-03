@@ -132,7 +132,7 @@ julia> println(join(operators, "\n"))
 [("h+-h", [2, 3, 3, 2], 1.0)]
 ```
 """
-function PartialTraceProjectors(
+@inline function PartialTraceProjectors(
         nonTracedSites::Vector{Int64};
         nonTracedConfigs::Vector{BitVector}=BitVector[]
     )
@@ -254,10 +254,10 @@ function MutInfo(
     reducingConfigs::Tuple{Vector{BitVector},Vector{BitVector}}=(BitVector[], BitVector[])
 )
     combinedConfigs = vec([[c1; c2] for (c1, c2) in Iterators.product(reducingConfigs...)])
-    SEE_A = Threads.@spawn VonNEntropy(state, reducingIndices[1]; reducingConfigs=reducingConfigs[1])
-    SEE_B = Threads.@spawn VonNEntropy(state, reducingIndices[2]; reducingConfigs=reducingConfigs[2])
-    SEE_AB = Threads.@spawn VonNEntropy(state, vcat(reducingIndices...); reducingConfigs=combinedConfigs)
-    return sum([1, 1, -1] .* fetch.([SEE_A, SEE_B, SEE_AB]))
+    SEE_A = VonNEntropy(state, reducingIndices[1]; reducingConfigs=reducingConfigs[1])
+    SEE_B = VonNEntropy(state, reducingIndices[2]; reducingConfigs=reducingConfigs[2])
+    SEE_AB = VonNEntropy(state, vcat(reducingIndices...); reducingConfigs=combinedConfigs)
+    return SEE_A + SEE_B - SEE_AB
 end
 export MutInfo
 

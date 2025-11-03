@@ -93,7 +93,7 @@ function TransformState(
         if abs(c_i) < tolerance
             continue
         end
-        mergewith!(+, transformedState, Dict(keysArr[i] .=> c_i .* valuesArr[i]))
+        @inbounds mergewith!(+, transformedState, Dict(keysArr[i] .=> c_i .* valuesArr[i]))
     end
     return transformedState
 end
