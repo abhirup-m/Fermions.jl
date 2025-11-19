@@ -1,6 +1,25 @@
 using Serialization, Random, LinearAlgebra, ProgressMeter
 
 
+function CheckTrivial(
+        #### NEEDS TO BE TESTED!! ####
+        type::String,
+        members::Vector{Int64},
+    )
+    @assert length(type) == length(members)
+    nullCases = ["h+", "n-", "+n", "-h", "++", "--", "nh", "hn"]
+    for (i, t) in enumerate(type[1:end-1])
+        i_next = findnext(==(members[i]), members, i+1)
+        if !isnothing(i_next) && type[i] * type[i_next] ∈ nullCases
+            return true
+        else
+            return false
+        end
+    end
+    return false
+end
+export CheckTrivial
+
 """
 Rearrange operator such that indices appear in ascending order.
 c^†_1 c_3 c_2 c^†_4 ⟶ -c^†_1 c_2 c_3 c^†_4.
@@ -82,11 +101,13 @@ function CreateProductOperator(
         productOperatorDef::Tuple{String,Vector{Int64}},
         operators::Dict{Tuple{String,Vector{Int64}}, Matrix{Float64}};
         newSites::Vector{Int64}=Int64[],
+        cachedOperators::Dict{Tuple{String, Vector{Int64}}, Matrix{Float64}}=Dict{Tuple{String, Vector{Int64}}, Matrix{Float64}}(),
+        opSize=-1,
     )
 
     # if the requested operator is already part of the operator set,
     # then nothing to do.
-    if productOperatorDef ∈ keys(operators)
+    if haskey(operators, productOperatorDef)
         return operators
     end
 
@@ -108,12 +129,24 @@ function CreateProductOperator(
         # if it isn't all new indices, caculate the old composite
         # operator.
         oldOperator = 1
-        if !isempty(oldIndices)
+        @inbounds if !isempty(oldIndices)
             @assert oldIndices == 1:length(oldIndices)
             oldOperator = operators[(type[oldIndices], members[oldIndices])]
         end
         # calculate the new composite operator
-        newOperator = prod([operators[(string(type[i]), [members[i]])] for i in newIndices])
+        newOperator = I(opSize)
+        if haskey(cachedOperators, (type[newIndices], members[newIndices]))
+            newOperator = cachedOperators[(type[newIndices], members[newIndices])]
+        else
+            if CheckTrivial(type[newIndices], members[newIndices])
+                newOperator .= 0
+            else
+                @inbounds for i in newIndices
+                    newOperator = newOperator * operators[(string(type[i]), [members[i]])]
+                end
+            end
+            cachedOperators[(type[newIndices], members[newIndices])] = newOperator
+        end
 
         operators[(type, members)] = oldOperator * newOperator
     end
@@ -377,7 +410,7 @@ function UpdateOldOperators(
     bondAntiSymmzer = rotation' * bondAntiSymmzer * rotation
 
     # rotate and enlarge operator needed to compute correlations
-    for (name, corrOperator) in collect(corrOperatorDict)
+    for (name, corrOperator) in corrOperatorDict
         if !isnothing(corrOperator)
             corrOperatorDict[name] = kron(rotation' * corrOperator * rotation, identityEnv)
         end
@@ -572,8 +605,10 @@ function IterDiag(
         end
 
         # create new product operators that involve the new sites
+        cachedOperators = Dict{Tuple{String, Vector{Int64}}, Matrix{Float64}}()
+        opSize = size(operators[("+", [newSitesFlow[step+1][1]])])[1]
         for operator in create[step+1]
-            CreateProductOperator(operator, operators; newSites=newSitesFlow[step+1])
+            CreateProductOperator(operator, operators; newSites=newSitesFlow[step+1], cachedOperators=cachedOperators, opSize=opSize)
         end
 
         # construct any new correlation operators that became available at this step
