@@ -1,16 +1,21 @@
 using Serialization, Random, LinearAlgebra, ProgressMeter
 
 
+"""
+Check if an operator combination is trivial for the given
+members. For example, c^dag c^dag c c is trivial for the
+members [1, 1, 2, 3], because the first site is annihilated
+twice consecutively,
+"""
 function CheckTrivial(
-        #### NEEDS TO BE TESTED!! ####
-        type::String,
+        operator::String,
         members::Vector{Int64},
     )
-    @assert length(type) == length(members)
+    @assert length(operator) == length(members)
     nullCases = ["h+", "n-", "+n", "-h", "++", "--", "nh", "hn"]
-    for (i, t) in enumerate(type[1:end-1])
+    for (i, t) in enumerate(operator[1:end-1])
         i_next = findnext(==(members[i]), members, i+1)
-        if !isnothing(i_next) && type[i] * type[i_next] ∈ nullCases
+        if !isnothing(i_next) && operator[i] * operator[i_next] ∈ nullCases
             return true
         else
             return false

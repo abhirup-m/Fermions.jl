@@ -273,6 +273,13 @@ end
 export Spectrum
 
 
+"""
+Given a hamiltonian and an operator O which shares
+eigenstates with the Hamiltonian, computes the
+bandstructure E(k) of the Hamiltonian where E
+are the energies classified according to the
+eigenvalues k of the operator O.
+"""
 function BandStructure(
         hamiltonian::Vector{Tuple{String,Vector{Int64},Float64}},
         basisStates::Vector{Dict{BitVector,Float64}},
@@ -312,6 +319,10 @@ end
 export BandStructure
 
 
+"""
+Given a state and an operator, checks whether the 
+state is an eigenstate of the operator
+"""
 function IsEigenState(
         state::Dict{BitVector,Float64},
         operator::Vector{Tuple{String,Vector{Int64},Float64}};

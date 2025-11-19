@@ -197,7 +197,7 @@ Dict{BitVector, Float64} with 1 entry:
         opMembers::Vector{Int64},
         opStrength::Float64,
         incomingState::Dict{BitVector,Float64};
-        tolerance::Float64=1e-16
+        tolerance::Float64=0.,
     )
     outgoingState = Dict{BitVector,Float64}()
     outgoingBasisState = similar(first(keys(incomingState)))
@@ -235,12 +235,11 @@ Dict{BitVector, Float64} with 1 entry:
             @inbounds outgoingBasisState[siteIndex] = newQubit
             newCoefficient *= exchangeSign * factor
         end
-
         if abs(newCoefficient) > tolerance
             if haskey(outgoingState, outgoingBasisState)
-                @inbounds outgoingState[outgoingBasisState] += opStrength * newCoefficient
+                @inbounds outgoingState[copy(outgoingBasisState)] += opStrength * newCoefficient
             else
-                @inbounds outgoingState[outgoingBasisState] = opStrength * newCoefficient
+                @inbounds outgoingState[copy(outgoingBasisState)] = opStrength * newCoefficient
             end
         end
     end
@@ -276,7 +275,7 @@ Dict{BitVector, Float64} with 2 entries:
 function ApplyOperator(
         operator::Vector{Tuple{String,Vector{Int64},Float64}},
         incomingState::Dict{BitVector,Float64};
-        tolerance::Float64=1e-16
+        tolerance::Float64=0.,
     )
     @assert !isempty(operator)
     @assert maximum([maximum(positions) for (_, positions, _) in operator]) ≤ length.(keys(incomingState))[1]
@@ -322,7 +321,7 @@ julia> OperatorMatrix(basis, operator)
 function OperatorMatrix(
         basisStates::Vector{Dict{BitVector,Float64}},
         operator::Vector{Tuple{String,Vector{Int64},Float64}};
-        tolerance::Float64=1e-16,
+        tolerance::Float64=0.,
     )
     operatorMatrix = zeros(length(basisStates), length(basisStates))
     newStates = [ApplyOperator(operator, incomingState; tolerance=tolerance)
@@ -583,7 +582,7 @@ export Dagger
 """
     VacuumState(basisStates)
 
-Returns the vacuum (completely unoccupied) state for the 
+Returns the vacuum (completely unoccupied) state for the given basis
 
 # Examples
 ```jldoctest
@@ -600,7 +599,7 @@ julia> Dagger(operator)
 """
 function VacuumState(
         basisStates::Vector{Dict{BitVector,Float64}};
-        tolerance::Float64=1e-14,
+        tolerance::Float64=0.,
     )
     numSites = basisStates |> first |> keys |> first |> length
     numberOperators = [("n", [i], 1.) for i in 1:numSites]
@@ -618,12 +617,12 @@ function DoesCommute(
         operatorLeft::Vector{Tuple{String,Vector{Int64},Float64}},
         operatorRight::Vector{Tuple{String,Vector{Int64},Float64}},
         basisStates::Vector{Dict{BitVector,Float64}};
-        tolerance=1e-15,
+        tolerance=0.,
     )
     matrixLeft = OperatorMatrix(basisStates, operatorLeft)
     matrixRight = OperatorMatrix(basisStates, operatorRight)
     commutator = matrixLeft * matrixRight - matrixRight * matrixLeft
-    if commutator .|> abs |> maximum < tolerance
+    if commutator .|> abs |> maximum ≤ tolerance
         return true
     else
         return false

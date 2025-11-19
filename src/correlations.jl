@@ -73,6 +73,7 @@ function ReducedDM(
         nonTracedSites::Vector{Int64};
         reducingConfigs::Vector{BitVector}=BitVector[]
     )
+    nonTracedSites = unique(nonTracedSites)
     # indices of the degrees of freedom that will not be summed over.
     tracedSites = setdiff(1:length(collect(keys(state))[1]), nonTracedSites)
 
@@ -513,6 +514,7 @@ function SpecFunc(
 
     @assert length(eigVals) == length(eigVecs)
 
+    degeneracy = count(E -> E ≤ minimum(eigVals) + degenTol, eigVals)
     spectralCoefficients = SpectralCoefficients(eigVecs, eigVals, probes;
                                                 excludeLevels=excludeLevels,
                                                 degenTol=degenTol,
@@ -521,7 +523,7 @@ function SpecFunc(
 
     specFunc = SpecFunc(spectralCoefficients, freqValues, standDev; 
                         normalise=normalise, broadFuncType=broadFuncType, 
-                        silent=silent)
+                        silent=silent) / degeneracy
     return specFunc
 end
 export SpecFunc
