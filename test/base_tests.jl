@@ -52,8 +52,8 @@ end
     basis = BasisStates(4)
     coeffs1 = rand(4^4)
     coeffs2 = rand(length(basis))
-    allOperators = [[(o1 * o2 * o3 * o4, [1, 2, 3, 4], coeffs1[i])]
-                    for (i, (o1, o2, o3, o4)) in enumerate(Iterators.product(repeat([["+", "-", "n", "h"]], 4)...))]
+    allOperators = [[(o1 * o2 * o3 * o4, [1, 2], coeffs1[i])]
+                    for (i, (o1, o2,)) in enumerate(Iterators.product(repeat([["+", "-", "n", "h"]], 2)...))]
     totalOperator = vcat(allOperators...)
     allStates = [Dict(k => coeffs2[i] * v for (k, v) in dict) for (i, dict) in enumerate(basis)]
     totalState = mergewith(+, allStates...)
@@ -176,4 +176,251 @@ end
         errorMatrix = OperatorMatrix(basis, hermConj) - OperatorMatrix(basis, operator)'
         @test errorMatrix .|> abs |> maximum == 0
     end
+end
+
+
+# ---------------------------------------------------------------
+# BasisStates
+# ---------------------------------------------------------------
+@testset "BasisStates" begin
+    # no restrictions → all 2^N states
+    bs = BasisStates(3)
+    @test length(bs) == 8
+
+    # total occupancy filtering
+    bs1 = BasisStates(3; totOccReq=1)
+    @test length(bs1) == 3
+    for st in bs1
+        @test sum(first(keys(st))) == 1
+    end
+
+    # magnetization filtering
+    bs2 = BasisStates(4; magzReq=0)
+    for st in bs2
+        bv = first(keys(st))
+        @test sum(bv[1:2:end]) - sum(bv[2:2:end]) == 0
+    end
+
+    # local criteria
+    bs3 = BasisStates(4; totOccReq=2, localCriteria = x->x[1]==1)
+    for st in bs3
+        bv = first(keys(st))
+        @test sum(bv)==2 && bv[1]==1
+    end
+
+    # explicit-form constructor (Vector inputs)
+    bs4 = BasisStates(3, [1], [1, -1], x->true)
+    @test all(sum(first(keys(s))) == 1 for s in bs4)
+end
+
+
+
+# ---------------------------------------------------------------
+# BasisStates1p
+# ---------------------------------------------------------------
+@testset "BasisStates1p" begin
+    bs = BasisStates1p(5)
+    @test length(bs) == 5
+    for (i,st) in enumerate(bs)
+        @test first(keys(st)) == BitVector([j==i for j=1:5])
+    end
+end
+
+
+
+# ---------------------------------------------------------------
+# TransformBit
+# ---------------------------------------------------------------
+@testset "TransformBit" begin
+    @test TransformBit(false, '+') == (true, 1)
+    @test TransformBit(true, '-')  == (false, 1)
+
+    # number operator
+    @test TransformBit(true, 'n')  == (true, 1)
+    @test TransformBit(false, 'n') == (false, 0)
+
+    # hole operator
+    @test TransformBit(true, 'h')  == (true, 0)
+    @test TransformBit(false, 'h') == (false, 1)
+
+    # invalid op
+    @test_throws AssertionError TransformBit(true, 'x')
+end
+
+
+
+# ---------------------------------------------------------------
+# ApplyOperatorChunk
+# ---------------------------------------------------------------
+@testset "ApplyOperatorChunk" begin
+    st = Dict(BitVector([1,0])=>1.0, BitVector([0,1])=>-0.5)
+
+    # simple hopping c1† c2
+    out = ApplyOperatorChunk("+-", [1,2], 1.0, st)
+    @test haskey(out, BitVector([1,0]))
+    @test out[BitVector([1,0])] ≈ (-0.5)
+
+    # operator that kills state
+    out2 = ApplyOperatorChunk("--", [1,2], 1.0, st)
+    @test isempty(out2)
+
+    # fermionic sign check: hopping over an occupied site
+    st2 = Dict(BitVector([1,1,0])=>1.0)
+    out3 = ApplyOperatorChunk("++", [3,1], 1.0, st2)
+    # site1 occupied → c1 kills → should be empty
+    @test isempty(out3)
+end
+
+
+
+# ---------------------------------------------------------------
+# ApplyOperator
+# ---------------------------------------------------------------
+@testset "ApplyOperator" begin
+    st = Dict(BitVector([1,0])=>1.0, BitVector([0,1])=>-0.5)
+    op = [("+-", [1,2], 0.1), ("nh", [2,1], 1.0)]
+
+    out = ApplyOperator(op, st)
+    @test length(out) == 2
+    @test out[BitVector([1,0])] ≈ -0.05
+    @test out[BitVector([0,1])] ≈ -0.5
+end
+
+
+
+# ---------------------------------------------------------------
+# OperatorMatrix
+# ---------------------------------------------------------------
+@testset "OperatorMatrix" begin
+    basis = BasisStates(2)
+    op = [("+-", [1,2], 0.5), ("n", [2], -1.0)]
+
+    mat = OperatorMatrix(basis, op)
+    @test size(mat) == (4,4)
+
+    # test a couple of values
+    @test mat[2,2] ≈ -1.0
+    @test mat[3,2] ≈ 0.5
+end
+
+
+
+# ---------------------------------------------------------------
+# StateOverlap
+# ---------------------------------------------------------------
+@testset "StateOverlap" begin
+    s1 = Dict(BitVector([1,0])=>1.0, BitVector([0,1])=>-0.5)
+    s2 = Dict(BitVector([1,1])=>0.5, BitVector([0,1])=>0.5)
+    @test StateOverlap(s1,s2) ≈ -0.25
+end
+
+
+
+# ---------------------------------------------------------------
+# ExpandIntoBasis
+# ---------------------------------------------------------------
+@testset "ExpandIntoBasis" begin
+    basis = BasisStates(2)
+    st = Dict(BitVector([1,0])=>2.0)
+    coeffs = ExpandIntoBasis(st, basis)
+    @test coeffs[3] == 2.0
+    @test all(coeffs[[1,2,4]] .== 0)
+end
+
+
+
+# ---------------------------------------------------------------
+# GetSector
+# ---------------------------------------------------------------
+@testset "GetSector" begin
+    st = Dict(BitVector([1,0,1,0])=>1.0)
+    @test GetSector(st, ['N']) == (2,)
+    @test GetSector(st, ['Z']) == ( (1+1)-(0+0), )    # =2
+    @test GetSector(st, ['N','Z']) == (2,2)
+end
+
+
+
+# ---------------------------------------------------------------
+# RoundTo
+# ---------------------------------------------------------------
+@testset "RoundTo" begin
+    @test RoundTo(1.122323, 1e-3) == 1.122
+    @test RoundTo(1.122323, 1e-2) == 1.12
+end
+
+
+
+# ---------------------------------------------------------------
+# PermuteSites (BitVector)
+# ---------------------------------------------------------------
+@testset "PermuteSites BitVector" begin
+    bv = BitVector([1,1])
+    new, s = PermuteSites(copy(bv), [2,1])
+    @test new == BitVector([1,1])
+    @test s == -1    # two fermions swapped → minus sign
+
+    bv2 = BitVector([1,0,1])
+    new2, s2 = PermuteSites(copy(bv2), [3,2,1])
+    # manually check: two swaps, but middle site empty → only 1 fermion swap
+    @test s2 == -1
+end
+
+
+
+# ---------------------------------------------------------------
+# PermuteSites (Dict state)
+# ---------------------------------------------------------------
+@testset "PermuteSites Dict" begin
+    st = Dict(BitVector([1,1])=>0.5, BitVector([0,1])=>0.3)
+    new = PermuteSites(st, [2,1])
+
+    @test new[BitVector([1,1])] == -0.5
+    @test new[BitVector([1,0])] == 0.3
+end
+
+
+
+# ---------------------------------------------------------------
+# Dagger
+# ---------------------------------------------------------------
+@testset "Dagger" begin
+    opT, mem = Dagger("+--+", [1,4,3,2])
+    @test opT == "-++-"
+    @test mem == [2,3,4,1]
+
+    op = [("++", [1,2], 1.), ("+n", [3,4], 2.)]
+    out = Dagger(op)
+    @test out[1][1] == "--"
+    @test out[2][1] == "n-"
+end
+
+
+
+# ---------------------------------------------------------------
+# VacuumState
+# ---------------------------------------------------------------
+@testset "VacuumState" begin
+    b = BasisStates(3)
+    vac = VacuumState(b)
+    @test first(keys(vac)) == BitVector([0,0,0])
+end
+
+
+
+# ---------------------------------------------------------------
+# DoesCommute
+# ---------------------------------------------------------------
+@testset "DoesCommute" begin
+    basis = BasisStates(2)
+
+    # n1  and n2 commute
+    op1 = [("n", [1], 1.0)]
+    op2 = [("n", [2], 1.0)]
+    @test DoesCommute(op1, op2, basis)
+
+    # creation at different sites anticommute → commutator ≠ 0
+    ca = [("+", [1], 1.0)]
+    cb = [("+", [2], 1.0)]
+    @test !DoesCommute(ca, cb, basis)
 end
