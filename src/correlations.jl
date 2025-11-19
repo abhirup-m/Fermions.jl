@@ -513,8 +513,10 @@ function SpecFunc(
 
     @assert length(eigVals) == length(eigVecs)
 
-    spectralCoefficients = SpectralCoefficients(eigVecs, eigVals, probes, excludeLevels,
-                                                degenTol; silent=silent
+    spectralCoefficients = SpectralCoefficients(eigVecs, eigVals, probes;
+                                                excludeLevels=excludeLevels,
+                                                degenTol=degenTol,
+                                                silent=silent
                                                )
 
     specFunc = SpecFunc(spectralCoefficients, freqValues, standDev; 
