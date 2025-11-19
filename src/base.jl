@@ -203,18 +203,20 @@ Dict{BitVector, Float64} with 1 entry:
     outgoingBasisState = similar(first(keys(incomingState)))
     for (incomingBasisState, coefficient) in incomingState
 
-        skip = false
-        for i in eachindex(opMembers)[end:-1:2]
-            if opType[i] in ('+', 'h') && incomingBasisState[opMembers[i]] != 0
-                skip = true
-                break
-            elseif !(opType[i] in ('+', 'h')) && incomingBasisState[opMembers[i]] != 1
-                skip = true
-                break
+        if allunique(opMembers)
+            skip = false
+            for (t, m) in zip(opType, opMembers)
+                if t in ('+', 'h') && incomingBasisState[m] == 1
+                    skip = true
+                    break
+                elseif (t in ('-', 'n')) && incomingBasisState[m] == 0
+                    skip = true
+                    break
+                end
             end
-        end
-        if skip
-            continue
+            if skip
+                continue
+            end
         end
         newCoefficient = coefficient
         copyto!(outgoingBasisState, incomingBasisState)
@@ -281,7 +283,9 @@ function ApplyOperator(
 
     outgoingState = empty(incomingState)
     for (opType, opMembers, opStrength) in operator
-        mergewith!(+, outgoingState, ApplyOperatorChunk(opType, opMembers, opStrength, copy(incomingState); tolerance=tolerance))
+        if opStrength ≠ 0
+            mergewith!(+, outgoingState, ApplyOperatorChunk(opType, opMembers, opStrength, copy(incomingState); tolerance=tolerance))
+        end
     end
     return outgoingState
 end
