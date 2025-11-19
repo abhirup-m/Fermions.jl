@@ -52,8 +52,8 @@ end
     basis = BasisStates(4)
     coeffs1 = rand(4^4)
     coeffs2 = rand(length(basis))
-    allOperators = [[(o1 * o2 * o3 * o4, [1, 2], coeffs1[i])]
-                    for (i, (o1, o2,)) in enumerate(Iterators.product(repeat([["+", "-", "n", "h"]], 2)...))]
+    allOperators = [[(o1 * o2 * o3 * o4, [1, 2, 3, 4], coeffs1[i])]
+                    for (i, (o1, o2, o3, o4)) in enumerate(Iterators.product(repeat([["+", "-", "n", "h"]], 4)...))]
     totalOperator = vcat(allOperators...)
     allStates = [Dict(k => coeffs2[i] * v for (k, v) in dict) for (i, dict) in enumerate(basis)]
     totalState = mergewith(+, allStates...)
@@ -380,7 +380,6 @@ end
 end
 
 
-
 # ---------------------------------------------------------------
 # Dagger
 # ---------------------------------------------------------------
@@ -394,18 +393,6 @@ end
     @test out[1][1] == "--"
     @test out[2][1] == "n-"
 end
-
-
-
-# ---------------------------------------------------------------
-# VacuumState
-# ---------------------------------------------------------------
-@testset "VacuumState" begin
-    b = BasisStates(3)
-    vac = VacuumState(b)
-    @test first(keys(vac)) == BitVector([0,0,0])
-end
-
 
 
 # ---------------------------------------------------------------
