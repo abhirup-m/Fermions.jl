@@ -669,7 +669,7 @@ function IterDiag(
     correlationDefDict::Dict{String, Vector{Tuple{String, Vector{Int64}, Float64}}}=Dict{String, Vector{Tuple{String, Vector{Int64}, Float64}}}(),
     vneDefDict::Dict{String, Vector{Int64}}=Dict{String, Vector{Int64}}(),
     mutInfoDefDict::Dict{String, NTuple{2,Vector{Int64}}}=Dict{String, NTuple{2,Vector{Int64}}}(),
-    specFuncDefDict::Dict{String, Vector{Tuple{String, Vector{Int64}, Float64}}}=Dict{String, Vector{Tuple{String, Vector{Int64}, Float64}}}(),
+    specFuncDefDict::Dict{String, Dict{String, Vector{Tuple{String, Vector{Int64}, Float64}}}}=Dict{String, Dict{String, Vector{Tuple{String, Vector{Int64}, Float64}}}}(),
     silent::Bool=false,
     maxMaxSize::Int64=0,
     calculateThroughout::Bool=false,
@@ -778,12 +778,16 @@ function IterDiag(
     # udpated during the iterative diagonalisation. We will finally
     # not use these operators to compute a ground state correlation,
     # but instead employ them for spectral function calculations.
-    specFuncToCorrMap = Dict{String, Vector{String}}()
-    for (name, operator) in specFuncDefDict
-        specFuncToCorrMap[name] = String[]
-        for term in operator
-            push!(specFuncToCorrMap[name], randstring())
-            correlationDefDict[specFuncToCorrMap[name][end]] = [term]
+    specFuncToCorrMap = Dict{String, Dict{String, Vector{String}}}()
+    specFuncNames = String[]
+    for (name, operatorPair) in specFuncDefDict
+        specFuncToCorrMap[name] = Dict{String, Vector{String}}("create" => [], "destroy" => [])
+        for (isDagger, operator) in operatorPair
+            for term in operator
+                push!(specFuncToCorrMap[name][isDagger], randstring())
+                correlationDefDict[specFuncToCorrMap[name][isDagger][end]] = [term]
+                push!(specFuncNames, specFuncToCorrMap[name][isDagger][end])
+            end
         end
     end
 
@@ -808,8 +812,6 @@ function IterDiag(
     # contains energyPerSite and correlation values;
     # specFuncOperators contains the updated forms of the
     # operators that will be used for spectral function calculations.
-    specFuncNames = String[]
-    append!(specFuncNames, vcat(values(specFuncToCorrMap)...))
     output = IterDiag(hamltFlow, 
                       maxSize, 
                       symmetries,
@@ -837,21 +839,32 @@ function IterDiag(
     if !isempty(specFuncToCorrMap)
         results["savePaths"] = output[2]
         specFuncOperators = output[3]
-        specFuncOperatorsConsolidated = Dict{String,Vector{Matrix{Float64}}}()
-        for (name, corrNameVector) in specFuncToCorrMap
-            specFuncOperatorsConsolidated[name] = Matrix{Float64}[]
-            for operatorsStep in zip([specFuncOperators[corrName] for corrName in corrNameVector]...)
-                if any(!isnothing, operatorsStep)
-                    push!(specFuncOperatorsConsolidated[name], sum(filter(o -> !isnothing(o), operatorsStep)))
+        specFuncOperatorsConsolidated = Dict{String,Dict{String, Vector}}()
+        for (name, pairVectors) in specFuncToCorrMap
+            specFuncOperatorsConsolidated[name] = Dict{String, Vector}("create" => [], "destroy" => [])
+            for isDagger in ["create", "destroy"]
+                for operatorsStep in zip([specFuncOperators[corrName] for corrName in pairVectors[isDagger]]...)
+                    if any(!isnothing, operatorsStep)
+                        push!(specFuncOperatorsConsolidated[name][isDagger], sum(filter(o -> !isnothing(o), operatorsStep)))
+                    else
+                        push!(specFuncOperatorsConsolidated[name][isDagger], nothing)
+                    end
                 end
             end
-            results[name] = IterSpectralCoeffs(results["savePaths"], specFuncOperatorsConsolidated[name];
-                                            degenTol=degenTol, occReq=occReq,
-                                            magzReq=magzReq, excOccReq=excOccReq,
-                                            excMagzReq=excMagzReq, 
-                                            excludeLevels=excludeLevels,
-                                            silent=silent,
-                                           )
+            for (step, (opCreate, opDestroy)) in enumerate(zip(specFuncOperatorsConsolidated[name]["create"], specFuncOperatorsConsolidated[name]["destroy"]))
+                if isnothing(opCreate) || isnothing(opDestroy)
+                    specFuncOperatorsConsolidated[name]["create"][step] = nothing
+                    specFuncOperatorsConsolidated[name]["destroy"][step] = nothing
+                end
+            end
+            results[name] = IterSpectralCoeffs(results["savePaths"], 
+                                               specFuncOperatorsConsolidated[name];
+                                               degenTol=degenTol, occReq=occReq,
+                                               magzReq=magzReq, excOccReq=excOccReq,
+                                               excMagzReq=excMagzReq, 
+                                               excludeLevels=excludeLevels,
+                                               silent=silent,
+                                              )
         end
         results["specFuncOperators"] = specFuncOperatorsConsolidated
     end
@@ -916,7 +929,7 @@ export IterDiag
 
 function IterSpecFunc(
         savePaths::Vector{String},
-        specFuncOperators::Vector{Matrix{Float64}},
+        specFuncOperators::Dict{String, Vector},
         freqValues::Vector{Float64},
         standDev::Union{Vector{Float64}, Float64};
         degenTol::Float64=0.,
@@ -950,7 +963,7 @@ export IterSpecFunc
 
 function IterSpectralCoeffs(
         savePaths::Vector{String},
-        specFuncOperators::Vector{Matrix{Float64}};
+        specFuncOperators::Dict{String, Vector};
         degenTol::Float64=0.,
         occReq::Union{Nothing,Function}=nothing,
         magzReq::Union{Nothing,Function}=nothing,
@@ -964,7 +977,7 @@ function IterSpectralCoeffs(
     excQuantumNoReq = CombineRequirements(excOccReq, excMagzReq)
 
     specCoeffsComplete = NTuple{2, Float64}[]
-    @showprogress desc="Iter Spec Coeffs" enabled=!silent for index in length(savePaths)-length(specFuncOperators):length(savePaths)-1
+    @showprogress desc="Iter Spec Coeffs" enabled=!silent for index in length(savePaths)-length(specFuncOperators["create"]):length(savePaths)-1
         savePath = savePaths[index]
         data = deserialize(savePath)
         eigVecs = [collect(col) for col in eachcol(data["basis"])]
@@ -995,11 +1008,16 @@ function IterSpectralCoeffs(
             @assert abs(groundStateEnergy - minimum(minimalEigVals)) < 1e-10
         end
 
-        operator = Dict{String, Matrix{Float64}}("create" => specFuncOperators[index], "destroy" => specFuncOperators[index]')
-        specCoeffs = SpectralCoefficients(minimalEigVecs, minimalEigVals, operator; 
-                                          excludeLevels=excludeLevels, degenTol=degenTol, silent=true,
-                                         )
-        append!(specCoeffsComplete, specCoeffs)
+        if !isnothing(specFuncOperators["create"][index])
+            operator = Dict{String, Matrix{Float64}}("create" => specFuncOperators["create"][index], "destroy" => specFuncOperators["destroy"][index])
+            specCoeffs = SpectralCoefficients(minimalEigVecs, minimalEigVals, operator; 
+                                              excludeLevels=excludeLevels, degenTol=degenTol, silent=true,
+                                             )
+            specCoeffs = [(c,p) for (c,p) in specCoeffs if abs(c) > 1e-15]
+            append!(specCoeffsComplete, specCoeffs)
+        else
+            append!(specCoeffsComplete, [])
+        end
     end
     return specCoeffsComplete
 end
@@ -1150,7 +1168,7 @@ one for the second step H2 = c^†_2 c_3 + c^†_3 c_4.
 """
 function MinceHamiltonian(
         hamiltonian::Vector{Tuple{String, Vector{Int64}, Float64}},
-        indexPartitions::Vector{Int64},
+        indexPartitions,
     )
     
     # first create the subspaces by defining start and stop
