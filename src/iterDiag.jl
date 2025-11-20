@@ -976,7 +976,7 @@ function IterSpectralCoeffs(
     quantumNoReq = CombineRequirements(occReq, magzReq)
     excQuantumNoReq = CombineRequirements(excOccReq, excMagzReq)
 
-    specCoeffsComplete = NTuple{2, Float64}[]
+    specCoeffsComplete = Vector{NTuple{2, Float64}}[]
     @showprogress desc="Iter Spec Coeffs" enabled=!silent for index in length(savePaths)-length(specFuncOperators["create"]):length(savePaths)-1
         savePath = savePaths[index]
         data = deserialize(savePath)
@@ -1014,9 +1014,9 @@ function IterSpectralCoeffs(
                                               excludeLevels=excludeLevels, degenTol=degenTol, silent=true,
                                              )
             specCoeffs = [(c,p) for (c,p) in specCoeffs if abs(c) > 1e-15]
-            append!(specCoeffsComplete, specCoeffs)
+            push!(specCoeffsComplete, specCoeffs)
         else
-            append!(specCoeffsComplete, [])
+            push!(specCoeffsComplete, [])
         end
     end
     return specCoeffsComplete

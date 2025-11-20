@@ -14,7 +14,7 @@ function HubbardModel(
     return hamiltonian
 end
 
-sites = 5
+sites = 10
 hubbardU = 0.5
 hamiltonian = HubbardModel(sites, hubbardU)
 hamiltonianFamily = MinceHamiltonian(hamiltonian, 4:2:2*sites)
