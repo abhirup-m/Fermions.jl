@@ -19,27 +19,27 @@ function Hamiltonian(num_sites, bandwidth)
     return vcat(kinetic_energy, vec(hubbard_term), Dagger(vec(hubbard_term)))
 end
 
-@btime begin
+#=@btime begin=#
     ########
     # 4.149 s (2438760 allocations: 1.22 GiB)
     # lowered to:  46.347 ms (1267488 allocations: 98.89 MiB)
     ########
+#==#
+#=    num_sites = 4=#
+#=    bandwidth = 1=#
+#=    hamiltonian = Hamiltonian(num_sites, bandwidth)=#
+#==#
+#=    basis = BasisStates(2 * num_sites)=#
+#=    E, V = Spectrum(hamiltonian, basis)=#
+#==#
+#=    corrOperator = [("+-n", [i, j, k], 1.) for i in 1:2*num_sites for j in 1:2*num_sites for k in 1:2*num_sites]=#
+#=    _ = GenCorrelation(V[1], corrOperator)=#
+#==#
+#=    mutInfoReducingIndices = (collect(1:4), collect(5:8))=#
+#=    _ = MutInfo(V[1], mutInfoReducingIndices)=#
+#=end=#
 
-    num_sites = 4
-    bandwidth = 1
-    hamiltonian = Hamiltonian(num_sites, bandwidth)
-
-    basis = BasisStates(2 * num_sites)
-    E, V = Spectrum(hamiltonian, basis)
-
-    corrOperator = [("+-n", [i, j, k], 1.) for i in 1:2*num_sites for j in 1:2*num_sites for k in 1:2*num_sites]
-    _ = GenCorrelation(V[1], corrOperator)
-
-    mutInfoReducingIndices = (collect(1:4), collect(5:8))
-    _ = MutInfo(V[1], mutInfoReducingIndices)
-end
-
-@btime begin
+begin
     ########
     # 17.696 s (140438681 allocations: 7.30 GiB)
     # lowered to: 410.687 ms (3549953 allocations: 382.19 MiB)
@@ -77,16 +77,16 @@ end
 end
 
 
-begin
+#=@btime begin=#
     ########
     # 13.220 s (2328913 allocations: 28.15 GiB)
     # lowered to: 8.853 s (2335834 allocations: 20.93 GiB)
     ########
-    num_sites = 6
-    bandwidth = 1
-    hamiltonian = Hamiltonian(num_sites, bandwidth)
-    family = MinceHamiltonian(hamiltonian, collect(2:2:2*num_sites))
-    corrOperator = Dict("$i-$j-$k" => [("+-n", [i, j, k], 1.)] for i in 1:2*num_sites for j in 1:2:2*num_sites for k in 1:2:2*num_sites)
-    mutInfo = Dict("$i-$j" => ([i, i+1], [j, j+1]) for i in 1:2:2*num_sites for j in 1:2:2*num_sites)
-    _ = IterDiag(family, 300; correlationDefDict=corrOperator, mutInfoDefDict=mutInfo)
-end
+#=    num_sites = 6=#
+#=    bandwidth = 1=#
+#=    hamiltonian = Hamiltonian(num_sites, bandwidth)=#
+#=    family = MinceHamiltonian(hamiltonian, collect(2:2:2*num_sites))=#
+#=    corrOperator = Dict("$i-$j-$k" => [("+-n", [i, j, k], 1.)] for i in 1:2*num_sites for j in 1:2:2*num_sites for k in 1:2:2*num_sites)=#
+#=    mutInfo = Dict("$i-$j" => ([i, i+1], [j, j+1]) for i in 1:2:2*num_sites for j in 1:2:2*num_sites)=#
+#=    _ = IterDiag(family, 300; correlationDefDict=corrOperator, mutInfoDefDict=mutInfo)=#
+#=end=#

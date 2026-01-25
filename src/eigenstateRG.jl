@@ -11,12 +11,21 @@ function getWavefunctionRG(initState::Dict{BitVector,Float64}, alphaValues::Vect
         numEntangled = div(length(collect(keys(newState))[1]), 2)
 
         # apply unitary evolution operator to generate new terms
-        newTerms = fetch.([Threads.@spawn ApplyOperator([operator], newState) for operator in unitaryOperatorList])
-        mergewith!(+, newState, newTerms...)
+        @time newTerms = fetch.([Threads.@spawn ApplyOperator([operator], newState) for operator in unitaryOperatorList])
+        @time mergewith!(+, newState, newTerms...)
+        #=@time mergewith!(+, newState, ApplyOperator(unitaryOperatorList, newState))=#
 
         # remove wavefunction coefficients below a threshold
+        total_norm = 0
         maxv = maximum(abs.(values(newState)))
-        filter!(x -> abs(x[2])/maxv > RGtolerance, newState)
+        @time for (k, v) in newState
+            if abs(v/maxv) < RGtolerance
+                delete!(newState, k)
+            else
+                total_norm += v^2
+            end
+        end
+        #=filter!(x -> abs(x[2])/maxv > RGtolerance, newState)=#
 
         # retained only maxSize number of coefficients in wavefunction
         if maxSize > 0 && maxSize < length(newState)
@@ -25,8 +34,8 @@ function getWavefunctionRG(initState::Dict{BitVector,Float64}, alphaValues::Vect
         else
             println("Drop ratio ~ ", 0)
         end
-        total_norm = sum(values(newState) .^ 2)^0.5
-        map!(x->x/total_norm, values(newState))
+        #=@time total_norm = sum(values(newState) .^ 2)^0.5=#
+        @time map!(x->x/total_norm, values(newState))
         push!(stateFlowArray, newState)
     end
 
