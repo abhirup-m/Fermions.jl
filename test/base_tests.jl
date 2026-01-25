@@ -411,3 +411,24 @@ end
     cb = [("+", [2], 1.0)]
     @test !DoesCommute(ca, cb, basis)
 end
+
+
+@testset "Product" begin
+    function GenRandOp(size, len, terms)
+        return [(join(["+-nh"[randperm(4)[1]] for _ in 1:size]), randperm(len)[1:size], rand()) for _ in 1:terms]
+    end
+    len = 8
+    basis = BasisStates(len)
+    for size1 in 1:len
+        for size2 in 1:len
+            for run in 1:50
+                op1 = GenRandOp(size1, len, 1 + abs(rand(Int64) % 6))
+                op2 = GenRandOp(size1, len, 1 + abs(rand(Int64) % 6))
+                prod = Product(op1, op2)
+                opProd = OperatorMatrix(basis, Product(op1, op2))
+                opProdTest = OperatorMatrix(basis, op1) * OperatorMatrix(basis, op2)
+                @test maximum(abs.(opProd .- opProdTest)) < 1e-14
+            end
+        end
+    end
+end

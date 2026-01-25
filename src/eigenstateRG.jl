@@ -1,4 +1,11 @@
-function getWavefunctionRG(initState::Dict{BitVector,Float64}, alphaValues::Vector{Float64}, numSteps::Integer, unitaryOperatorFunction::Function, stateExpansionFunction::Function, sectors::String; maxSize::Int64=0, RGtolerance::Float64=1e-16)
+function getWavefunctionRG(initState::Dict{BitVector,Float64}, 
+        alphaValues::Vector{Float64},
+        numSteps::Integer,
+        unitaryOperatorFunction::Function,
+        stateExpansionFunction::Function,
+        sectors::String; maxSize::Int64=0,
+        RGtolerance::Float64=1e-16
+    )
 
     @assert numSteps ≤ length(alphaValues)
     numEntangled = div(length(collect(keys(initState))[1]), 2)
@@ -13,7 +20,6 @@ function getWavefunctionRG(initState::Dict{BitVector,Float64}, alphaValues::Vect
         # apply unitary evolution operator to generate new terms
         @time newTerms = fetch.([Threads.@spawn ApplyOperator([operator], newState) for operator in unitaryOperatorList])
         @time mergewith!(+, newState, newTerms...)
-        #=@time mergewith!(+, newState, ApplyOperator(unitaryOperatorList, newState))=#
 
         # remove wavefunction coefficients below a threshold
         total_norm = 0
@@ -25,7 +31,6 @@ function getWavefunctionRG(initState::Dict{BitVector,Float64}, alphaValues::Vect
                 total_norm += v^2
             end
         end
-        #=filter!(x -> abs(x[2])/maxv > RGtolerance, newState)=#
 
         # retained only maxSize number of coefficients in wavefunction
         if maxSize > 0 && maxSize < length(newState)
