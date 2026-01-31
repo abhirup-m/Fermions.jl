@@ -15,7 +15,6 @@ function getWavefunctionRG(initState::Dict{BitVector,Float64},
 
     for alpha in alphaValues[1:numSteps]
         newState = stateExpansionFunction(stateFlowArray[end], sectors)
-        println(newState)
         unitaryOperatorList = unitaryOperatorFunction(alpha, numEntangled, sectors)
         numEntangled = div(length(collect(keys(newState))[1]), 2)
 
@@ -39,7 +38,7 @@ function getWavefunctionRG(initState::Dict{BitVector,Float64},
             println("Drop ratio ~ ", sum(sort(abs.(values(newState)), rev=true)[maxSize:end] .^ 2) / sum(values(newState) .^ 2))
             newState = Dict(sort(collect(newState), by=x->x|>last|>abs, rev=true)[1:maxSize])
         else
-            println("Drop ratio ~ ", 0)
+            println("Drop ratio ~ 0. Number of states = $(length(newState))")
         end
         map!(x->x/total_norm, values(newState))
         push!(stateFlowArray, newState)

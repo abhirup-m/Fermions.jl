@@ -355,3 +355,82 @@ function IsEigenState(
     end
 end
 export IsEigenState
+
+
+"""
+    EffHamiltonian(
+            zerothHamiltonian,
+            basisStates,
+            perturbation,
+            quantumNumbers;
+            tolerance::Float64=1e-10
+        )
+
+Calculates second and fourth order in ground state
+subspace of zerothHamiltonian, associated with the
+perturbation; the shifts are labelled by the
+quantum numbers of the states. The shifts are calculated
+using the vector formula
+
+    E^2(n) = <n | V G V |n>
+    E^4(n) = <n | V G V G V G V |n> - E^2(n) <n| V G^2 V |n>
+
+These forms can be shown to be equal to the more
+traditional perturbation theory forms.
+
+"""
+function EffHamiltonian(
+        zerothHamiltonian::Vector{Tuple{String,Vector{Int64},Float64}},
+        perturbation::Vector{Tuple{String,Vector{Int64},Float64}},
+        quantumNumbers::Dict{String, Vector{Tuple{String,Vector{Int64},Float64}}};
+        tolerance::Float64=1e-10
+    )
+    basisStates = BasisStates(maximum([maximum(t[2]) for t in vcat(zerothHamiltonian, perturbation)]))
+    E, V = Spectrum(zerothHamiltonian, basisStates)
+    groundStateEnergy = E[1]
+    lowEnergySubspace = [Vi for (Ei, Vi) in zip(E, V) if abs(Ei - groundStateEnergy) < tolerance]
+    if length(lowEnergySubspace) > 1
+        degeneracyMatrix = zeros(length(lowEnergySubspace), length(lowEnergySubspace))
+        for i in eachindex(lowEnergySubspace)
+            newState = ApplyOperator(perturbation, lowEnergySubspace[i])
+
+            quantumNumberVals = Dict(k => StateOverlap(lowEnergySubspace[i], ApplyOperator(op, lowEnergySubspace[i])) for (k, op) in quantumNumbers)
+            s = []
+            for (k, v) in quantumNumberVals
+                push!(s, "$(k) = $(v)")
+            end
+            println(join(s, " "))
+            for j in eachindex(lowEnergySubspace)
+                degeneracyMatrix[j, i] = StateOverlap(lowEnergySubspace[j], newState)
+            end
+        end
+        if maximum(abs.(degeneracyMatrix)) > tolerance
+            display(degeneracyMatrix)
+        end
+        @assert maximum(abs.(degeneracyMatrix)) < tolerance maximum(abs.(degeneracyMatrix))
+    end
+    highEnergySubspace = [Vi for (Ei, Vi) in zip(E, V) if abs(Ei - groundStateEnergy) > tolerance]
+    shifts2nd = Dict{String, Float64}()
+    shifts4th = Dict{String, Float64}()
+    perturbationMatrix = OperatorMatrix(V, perturbation)
+    greenMatrix = zeros(length(V), length(V))
+    for (i, Ei) in enumerate(E)
+        if abs(Ei - groundStateEnergy) > tolerance
+            greenMatrix[i, i] = 1 ./ (groundStateEnergy .- Ei)
+        end
+    end
+    for (i, ln) in enumerate(lowEnergySubspace)
+        lnVector = zeros(length(V))
+        lnVector[i] = 1.
+        s = []
+        quantumNumberVals = Dict(k => StateOverlap(ln, ApplyOperator(op, ln)) for (k, op) in quantumNumbers)
+        for (k, v) in quantumNumberVals
+            push!(s, "$(k) = $(v)")
+        end
+        shifts2nd[join(s, ", ")] = lnVector' * perturbationMatrix * greenMatrix * perturbationMatrix * lnVector
+        shifts4th[join(s, ", ")] = (lnVector' * perturbationMatrix * greenMatrix * perturbationMatrix * greenMatrix * perturbationMatrix * greenMatrix * perturbationMatrix * lnVector 
+                              - shifts2nd[join(s, ", ")] * (lnVector' * perturbationMatrix * greenMatrix^2 * perturbationMatrix * lnVector)
+                             )
+    end
+    return shifts2nd, shifts4th
+end
