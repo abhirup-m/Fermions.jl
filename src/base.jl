@@ -647,45 +647,52 @@ Tuple{String, Vector{Int64}, Float64}[]
  ```
 """
 function Product(
-        operatorLeft::Vector{Tuple{String,Vector{Int64},Float64}},
-        operatorRight::Vector{Tuple{String,Vector{Int64},Float64}},
+        operators...
     )
-    prodOperator = Tuple{String,Vector{Int64},Float64}[]
-    for (type1, inds1, strength1) in operatorLeft
-        for (type2, inds2, strength2) in operatorRight
-            prodTerm = [collect(type1*type2), vcat(inds1, inds2), strength1 * strength2]
-            if !isdisjoint(inds1, inds2)
-                prodTable = Dict(
-                                 'n' => Dict('n' => 'n', 'h' => nothing, '+' => '+', '-' => nothing),
-                                 'h' => Dict('h' => 'h', 'n' => nothing, '-' => '-', '+' => nothing),
-                                 '+' => Dict('-' => 'n', '+' => nothing, 'h' => '+', 'n' => nothing),
-                                 '-' => Dict('+' => 'h', '-' => nothing, 'n' => '-', 'h' => nothing),
-                                )
-                #=println(prodTerm)=#
-                for (pos1, i) in filter(p -> p[2] ∈ inds2, collect(enumerate(inds1)))
-                    frontOffSet = length(inds1) + length(inds2) - length(prodTerm[1])
-                    pos2 = findfirst(==(i), inds2)
-                    if type1[pos1] ∈ "nh"
-                        accumulatedSign = 1
-                    else
-                        accumulatedSign = (-1)^count(∈("+-"), prodTerm[1][(pos1 - frontOffSet + 1):(end-(length(inds2) - pos2)-1)])
-                    end
-                    #=println(accumulatedSign, prodTerm[1][(pos1 - frontOffSet + 1):(end-(length(inds2) - pos2)-1)])=#
-                    newType = prodTable[type1[pos1]][type2[pos2]]
-                    if isnothing(newType)
-                        prodTerm[3] = 0.
-                        break
-                    end
-                    prodTerm[1][end-(length(inds2) - pos2)] = newType
-                    deleteat!(prodTerm[1], pos1 - frontOffSet)
-                    deleteat!(prodTerm[2], pos1 - frontOffSet)
-                    prodTerm[3] *= accumulatedSign
+    @assert !isempty(operators)
+    if length(operators) == 1
+        return operators[1]
+    elseif length(operators) == 2
+        operatorLeft, operatorRight = operators
+        prodOperator = Tuple{String,Vector{Int64},Float64}[]
+        for (type1, inds1, strength1) in operatorLeft
+            for (type2, inds2, strength2) in operatorRight
+                prodTerm = [collect(type1*type2), vcat(inds1, inds2), strength1 * strength2]
+                if !isdisjoint(inds1, inds2)
+                    prodTable = Dict(
+                                     'n' => Dict('n' => 'n', 'h' => nothing, '+' => '+', '-' => nothing),
+                                     'h' => Dict('h' => 'h', 'n' => nothing, '-' => '-', '+' => nothing),
+                                     '+' => Dict('-' => 'n', '+' => nothing, 'h' => '+', 'n' => nothing),
+                                     '-' => Dict('+' => 'h', '-' => nothing, 'n' => '-', 'h' => nothing),
+                                    )
                     #=println(prodTerm)=#
+                    for (pos1, i) in filter(p -> p[2] ∈ inds2, collect(enumerate(inds1)))
+                        frontOffSet = length(inds1) + length(inds2) - length(prodTerm[1])
+                        pos2 = findfirst(==(i), inds2)
+                        if type1[pos1] ∈ "nh"
+                            accumulatedSign = 1
+                        else
+                            accumulatedSign = (-1)^count(∈("+-"), prodTerm[1][(pos1 - frontOffSet + 1):(end-(length(inds2) - pos2)-1)])
+                        end
+                        #=println(accumulatedSign, prodTerm[1][(pos1 - frontOffSet + 1):(end-(length(inds2) - pos2)-1)])=#
+                        newType = prodTable[type1[pos1]][type2[pos2]]
+                        if isnothing(newType)
+                            prodTerm[3] = 0.
+                            break
+                        end
+                        prodTerm[1][end-(length(inds2) - pos2)] = newType
+                        deleteat!(prodTerm[1], pos1 - frontOffSet)
+                        deleteat!(prodTerm[2], pos1 - frontOffSet)
+                        prodTerm[3] *= accumulatedSign
+                        #=println(prodTerm)=#
+                    end
                 end
+                push!(prodOperator, (join(prodTerm[1]), prodTerm[2], prodTerm[3]))
             end
-            push!(prodOperator, (join(prodTerm[1]), prodTerm[2], prodTerm[3]))
         end
+        return prodOperator
+    else
+        return Product(operators[1:end-2]..., Product(operators[end-1], operators[end]))
     end
-    return prodOperator
 end
 export Product

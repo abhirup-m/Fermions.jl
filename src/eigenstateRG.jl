@@ -1,4 +1,5 @@
-function getWavefunctionRG(initState::Dict{BitVector,Float64}, 
+function getWavefunctionRG(
+        initState::Dict{BitVector,Float64}, 
         alphaValues::Vector{Float64},
         numSteps::Integer,
         unitaryOperatorFunction::Function,
