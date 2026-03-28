@@ -443,7 +443,7 @@ function IterDiag(
     silent::Bool,
     specFuncNames::Vector{String},
     maxMaxSize::Int64,
-    calculateThroughout::Bool,
+    save::Bool,
 )
     # ensure each term of the Hamiltonian is sorted in indices
     for (i, hamlt) in enumerate(hamltFlow)
@@ -530,7 +530,7 @@ function IterDiag(
 
         if step == length(hamltFlow)
             # if this is the last step, save data and calculate any correlations
-            if !isempty(specFuncNames)
+            if !isempty(specFuncNames) || save
                 serialize(savePaths[step], Dict("basis" => rotation,
                                                 "eigVals" => eigVals,
                                                 "quantumNos" => quantumNos,
@@ -577,7 +577,7 @@ function IterDiag(
                         "results" => results,
                        )
 
-        if !isempty(specFuncNames)
+        if !isempty(specFuncNames) || save
             serialize(savePaths[step], saveDict)
         end
 
@@ -645,6 +645,8 @@ function IterDiag(
     
     if !isempty(specFuncNames)
         return results, savePaths, specFuncOperators
+    elseif save
+        return results, savePaths
     else
         return results
     end
@@ -672,8 +674,8 @@ function IterDiag(
     specFuncDefDict::Dict{String, Dict{String, Vector{Tuple{String, Vector{Int64}, Float64}}}}=Dict{String, Dict{String, Vector{Tuple{String, Vector{Int64}, Float64}}}}(),
     silent::Bool=false,
     maxMaxSize::Int64=0,
-    calculateThroughout::Bool=false,
     excludeLevels::Function=x -> false,
+    save::Bool=false,
 )
     @assert maxMaxSize == 0 || maxMaxSize ≥ maxSize
 
@@ -823,7 +825,7 @@ function IterDiag(
                       silent,
                       specFuncNames,
                       maxMaxSize,
-                      calculateThroughout,
+                      save,
                      )
 
     # if specFuncOperators was requested, convert them back to 
@@ -836,8 +838,11 @@ function IterDiag(
         results = output
     end
 
-    if !isempty(specFuncToCorrMap)
+    if length(output) > 1
         results["savePaths"] = output[2]
+    end
+
+    if !isempty(specFuncToCorrMap)
         specFuncOperators = output[3]
         specFuncOperatorsConsolidated = Dict{String,Dict{String, Vector}}()
         for (name, pairVectors) in specFuncToCorrMap
