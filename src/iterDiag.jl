@@ -393,11 +393,13 @@ Rotate and enlarge old operators after each diagonalisation.
 function UpdateOldOperators(
         eigVals::Vector{Float64}, 
         identityEnv::Diagonal{Bool, Vector{Bool}}, 
+        stateIdentityEnv::Vector{Float64},
         newBasket::Vector{Tuple{String, Vector{Int64}}},
         operators::Dict{Tuple{String, Vector{Int64}}, Matrix{Float64}},
         rotation::Matrix{Float64}, 
         bondAntiSymmzer::Matrix{Float64},
         corrOperatorDict::Dict{String, Union{Nothing, Matrix{Float64}}},
+        stateVectors::Dict{String, Vector{Float64}},
     )
 
     # expanded diagonal hamiltonian
@@ -412,6 +414,11 @@ function UpdateOldOperators(
     for key in keys(operators)
         operators[key] = kron(rotation' * operators[key] * rotation, identityEnv)
     end
+    for (key, state) in stateVectors
+        stateVectors[key] = rotation' * state
+        stateVectors[key] ./= norm(stateVectors[key])
+        stateVectors[key] = kron(stateVectors[key], stateIdentityEnv)
+    end
     bondAntiSymmzer = rotation' * bondAntiSymmzer * rotation
 
     # rotate and enlarge operator needed to compute correlations
@@ -420,7 +427,7 @@ function UpdateOldOperators(
             corrOperatorDict[name] = kron(rotation' * corrOperator * rotation, identityEnv)
         end
     end
-    return hamltMatrix, operators, bondAntiSymmzer, corrOperatorDict
+    return hamltMatrix, operators, bondAntiSymmzer, corrOperatorDict, stateVectors
 end
 export UpdateOldOperators
 
@@ -436,6 +443,7 @@ function IterDiag(
     maxSize::Int64,
     symmetries::Vector{Char},
     correlationDefDict::Dict{String, Vector{Tuple{String, Vector{Int64}, Float64}}},
+    stateDict::Dict{String, Dict{BitVector,Float64}},
     quantumNoReq::Union{Nothing,Function},
     corrQuantumNoReq::Union{Nothing,Function},
     degenTol::Float64,
@@ -472,6 +480,8 @@ function IterDiag(
     # being added at each step, and the various operators
     # that must be created at each step.
     operators, bondAntiSymmzer, hamltMatrix, newSitesFlow, create, basket = InitiateMatrices(currentSites, hamltFlow, initBasis)
+
+    stateVectors = Dict(name => ExpandIntoBasis(state, initBasis) for (name, state) in stateDict)
 
     # if there are correlations, add them to the set of
     # operators that must be created and updated
@@ -529,18 +539,6 @@ function IterDiag(
         eigVals, rotation, quantumNos = Diagonalise(hamltMatrix, quantumNos)
 
         if step == length(hamltFlow)
-            # if this is the last step, save data and calculate any correlations
-            if !isempty(specFuncNames) || save
-                serialize(savePaths[step], Dict("basis" => rotation,
-                                                "eigVals" => eigVals,
-                                                "quantumNos" => quantumNos,
-                                                "currentSites" => currentSites,
-                                                "newSites" => newSitesFlow[step],
-                                                "bondAntiSymmzer" => bondAntiSymmzer,
-                                                "results" => results,
-                                               )
-                         )
-            end
 
             results["energyPerSite"] = eigVals[1]/maximum(currentSites)
 
@@ -556,6 +554,20 @@ function IterDiag(
                     results[name] = finalState' * corrOperatorDict[name] * finalState
                 end
             end
+            #
+            # if this is the last step, save data and calculate any correlations
+            if !isempty(specFuncNames) || save
+                serialize(savePaths[step], Dict("basis" => rotation,
+                                                "eigVals" => eigVals,
+                                                "quantumNos" => quantumNos,
+                                                "currentSites" => currentSites,
+                                                "newSites" => newSitesFlow[step],
+                                                "bondAntiSymmzer" => bondAntiSymmzer,
+                                                "stateVectors" => stateVectors,
+                                                "results" => results,
+                                               )
+                         )
+            end
 
             next!(pbar; showvalues=[("Size", size(hamltMatrix))])
             break
@@ -565,6 +577,7 @@ function IterDiag(
         newBasis = BasisStates(length(newSitesFlow[step+1]))
 
         identityEnv = length(newSitesFlow[step+1]) == 1 ? I(2) : kron(fill(I(2), length(newSitesFlow[step+1]))...)
+        stateIdentityEnv = kron([[1., 0.] for _ in 1:length(newSitesFlow[step+1])]...)
 
         # save data
         saveDict = Dict("basis" => rotation,
@@ -574,6 +587,7 @@ function IterDiag(
                         "newSites" => newSitesFlow[step],
                         "bondAntiSymmzer" => bondAntiSymmzer,
                         "identityEnv" => identityEnv,
+                        "stateVectors" => stateVectors,
                         "results" => results,
                        )
 
@@ -599,9 +613,17 @@ function IterDiag(
         end
 
         # rotate and enlarge existing operators
-        hamltMatrix, operators, bondAntiSymmzer, corrOperatorDict = UpdateOldOperators(eigVals, identityEnv, basket[step+1], 
-                                                                                   operators, rotation, bondAntiSymmzer, corrOperatorDict
-                                                                                  )
+        hamltMatrix, operators, bondAntiSymmzer, corrOperatorDict = UpdateOldOperators(
+                                                                                       eigVals,
+                                                                                       identityEnv,
+                                                                                       stateIdentityEnv,
+                                                                                       basket[step+1], 
+                                                                                       operators,
+                                                                                       rotation,
+                                                                                       bondAntiSymmzer,
+                                                                                       corrOperatorDict,
+                                                                                       stateVectors,
+                                                                                      )
 
         # define the qbit operators for the new sites
         for site in newSitesFlow[step+1] 
@@ -672,6 +694,7 @@ function IterDiag(
     vneDefDict::Dict{String, Vector{Int64}}=Dict{String, Vector{Int64}}(),
     mutInfoDefDict::Dict{String, NTuple{2,Vector{Int64}}}=Dict{String, NTuple{2,Vector{Int64}}}(),
     specFuncDefDict::Dict{String, Dict{String, Vector{Tuple{String, Vector{Int64}, Float64}}}}=Dict{String, Dict{String, Vector{Tuple{String, Vector{Int64}, Float64}}}}(),
+    stateDict::Dict{String, Dict{BitVector,Float64}}=Dict{String, Dict{BitVector,Float64}}(),
     silent::Bool=false,
     maxMaxSize::Int64=0,
     excludeLevels::Function=x -> false,
@@ -818,6 +841,7 @@ function IterDiag(
                       maxSize, 
                       symmetries,
                       correlationDefDict,
+                      stateDict,
                       quantumNoReq, 
                       corrQuantumNoReq,
                       degenTol,

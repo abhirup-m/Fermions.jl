@@ -59,3 +59,43 @@ function StateEvolution(
     return stateEvolution
 end
 export StateEvolution
+
+
+function TimeEvolve(
+        initState::Dict{BitVector,Float64},
+        operator::Vector{Tuple{String,Vector{Int64},Float64}},
+        hamltFlow::Vector{Vector{Tuple{String,Vector{Int64},Float64}}},
+        maxSize::Int64,
+        timeDef::Dict{String, Number};
+        symmetries::Vector{Char}=Char[],
+    )
+    @assert haskey(timeDef, "start") && haskey(timeDef, "stop") && haskey(timeDef, "numSteps")
+
+    results = IterDiag(
+                       hamltFlow,
+                       maxSize;
+                       symmetries=symmetries,
+                       specFuncDefDict=Dict("operator" => Dict("create" => operator, "destroy" => Dagger(operator))),
+                       stateDict = Dict("initState" => initState),
+                       save=true,
+                      )
+    operatorFirst = results["specFuncOperators"]["operator"]["create"][1]
+    operatorMatrix = results["specFuncOperators"]["operator"]["create"][end]
+    eigVals = deserialize(results["savePaths"][end-1])["eigVals"]
+    rotation = deserialize(results["savePaths"][end-1])["basis"]
+    operatorLastStep = rotation' * operatorMatrix * rotation
+    operatorLastStep *= √(sum(operatorFirst^2) / sum(operatorLastStep^2))
+    initState = deserialize(results["savePaths"][end-1])["stateVectors"]["initState"]
+    referenceState = rotation' * initState
+
+    timeSteps = range(timeDef["start"], stop=timeDef["stop"], length=timeDef["numSteps"])
+    timeEvol = 0 .* collect(timeSteps)
+    deltaUnitary = exp.(-1im * eigVals * (timeSteps[2] - timeSteps[1]))
+    for (i, time) in enumerate(timeSteps)
+        referenceState /= norm(referenceState)
+        evolvedVal = referenceState' * operatorLastStep * referenceState
+        timeEvol[i] = 0.5 * (evolvedVal + evolvedVal')
+        referenceState = deltaUnitary .* referenceState
+    end
+    return timeEvol
+end
