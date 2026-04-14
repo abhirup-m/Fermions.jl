@@ -665,10 +665,11 @@ function IterDiag(
         next!(pbar; showvalues=[("Size", size(hamltMatrix))])
     end
     
+    if !isnothing(savePaths)
+        results["savePaths"] = savePaths
+    end
     if !isempty(specFuncNames)
-        return results, savePaths, specFuncOperators
-    elseif save
-        return results, savePaths
+        return results, specFuncOperators
     else
         return results
     end
@@ -862,12 +863,8 @@ function IterDiag(
         results = output
     end
 
-    if length(output) > 1
-        results["savePaths"] = output[2]
-    end
-
     if !isempty(specFuncToCorrMap)
-        specFuncOperators = output[3]
+        specFuncOperators = output[2]
         specFuncOperatorsConsolidated = Dict{String,Dict{String, Vector}}()
         for (name, pairVectors) in specFuncToCorrMap
             specFuncOperatorsConsolidated[name] = Dict{String, Vector}("create" => [], "destroy" => [])
