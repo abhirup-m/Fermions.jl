@@ -1,4 +1,5 @@
 using Random
+include("../src/base.jl")
 
 @testset "BasisStates" begin
 
@@ -431,4 +432,294 @@ end
             end
         end
     end
+end
+
+
+@testset "Simplify basic pair rules" begin
+    # +- => n
+    op = ['+', '-']
+    mem = [1, 1]
+    res = Simplify(copy(op), copy(mem))
+    @test res[1] == ['n']
+    @test res[2] == [1]
+    @test res[3] == 1
+
+    # -+ => h
+    op = ['-', '+']
+    mem = [1, 1]
+    res = Simplify(copy(op), copy(mem))
+    @test res[1] == ['h']
+    @test res[2] == [1]
+    @test res[3] == 1
+
+    # nn => n
+    op = ['n', 'n']
+    mem = [1, 1]
+    res = Simplify(copy(op), copy(mem))
+    @test res[1] == ['n']
+    @test res[2] == [1]
+
+    # hh => h
+    op = ['h', 'h']
+    mem = [1, 1]
+    res = Simplify(copy(op), copy(mem))
+    @test res[1] == ['h']
+    @test res[2] == [1]
+
+    # -n => -
+    op = ['-', 'n']
+    mem = [1, 1]
+    res = Simplify(copy(op), copy(mem))
+    @test res[1] == ['-']
+    @test res[2] == [1]
+
+    # h- => -
+    op = ['h', '-']
+    mem = [1, 1]
+    res = Simplify(copy(op), copy(mem))
+    @test res[1] == ['-']
+
+    # +h => +
+    op = ['+', 'h']
+    mem = [1, 1]
+    res = Simplify(copy(op), copy(mem))
+    @test res[1] == ['+']
+
+    # n+ => +
+    op = ['n', '+']
+    mem = [1, 1]
+    res = Simplify(copy(op), copy(mem))
+    @test res[1] == ['+']
+end
+
+@testset "No simplification for different sites" begin
+    op = ['+', '-']
+    mem = [1, 2]
+    res = Simplify(copy(op), copy(mem))
+    @test res[1] == op
+    @test res[2] == mem
+end
+
+@testset "Fermionic sign from reordering" begin
+    # One fermion between identical sites → sign flip
+    op = ['+', '+', '-']
+    mem = [1, 2, 1]
+    res = Simplify(copy(op), copy(mem))
+
+    # +- at same site with one fermion in between → (-1)^1 = -1
+    @test res[1] == ['n', '+']
+    @test res[2] == [1, 2]
+    @test res[3] == -1
+
+    # Two fermions in between → no sign change
+    op = ['+', '+', '-', '-']
+    mem = [1, 2, 3, 1]
+    res = Simplify(copy(op), copy(mem))
+
+    @test res[1][1] == 'n'
+    @test res[3] == 1
+end
+
+@testset "Multiple independent sites" begin
+    op = ['+', '-', '+', '-']
+    mem = [1, 1, 2, 2]
+
+    res = Simplify(copy(op), copy(mem))
+
+    @test res[1] == ['n', 'n']
+    @test res[2] == [1, 2]
+    @test res[3] == 1
+end
+
+@testset "Chained simplifications" begin
+    # ((+-) -> n), then (n n -> n)
+    op = ['+', '-', 'n']
+    mem = [1, 1, 1]
+
+    res = Simplify(copy(op), copy(mem))
+
+    @test res[1] == ['n']
+    @test res[2] == [1]
+end
+
+@testset "Order sensitivity" begin
+    op1 = ['+', '-']
+    mem1 = [1, 1]
+
+    op2 = ['-', '+']
+    mem2 = [1, 1]
+
+    res1 = Simplify(copy(op1), copy(mem1))
+    res2 = Simplify(copy(op2), copy(mem2))
+
+    @test res1[1] != res2[1]  # n vs h
+end
+
+@testset "Trivial operator returns nothing" begin
+    # Example: ++ on same site → zero
+    op = ['+', '+']
+    mem = [1, 1]
+
+    res = Simplify(copy(op), copy(mem))
+    @test res[3] === 0
+
+    # Similarly for --
+    op = ['-', '-']
+    mem = [2, 2]
+
+    res = Simplify(copy(op), copy(mem))
+    @test res[3] === 0
+end
+
+@testset "Stability of unrelated operators" begin
+    op = ['+', 'n', '-', 'h']
+    mem = [1, 2, 3, 4]
+
+    res = Simplify(copy(op), copy(mem))
+
+    @test res[1] == op
+    @test res[2] == mem
+    @test res[3] == 1
+end
+
+@testset "Mixed complex case" begin
+    op = ['+', '+', '-', 'n', '-', 'h']
+    mem = [1, 2, 1, 3, 2, 3]
+
+    res = Simplify(copy(op), copy(mem))
+
+    # Check consistency rather than exact structure
+    @test length(res[1]) == length(res[2])
+    @test all(m -> m ∈ unique(res[2]), res[2])
+end
+
+@testset "Long operators: multiple sites and chains" begin
+    # Two independent sites, interleaved
+    op = ['+', '+', '-', '-']
+    mem = [1, 2, 1, 2]
+
+    res = Simplify(copy(op), copy(mem))
+    @test res[1] == ['n', 'n']
+    @test sort(res[2]) == [1, 2]
+
+    # Same site appearing 3 times (should reduce stepwise)
+    op = ['+', '-', 'n']
+    mem = [1, 1, 1]
+
+    res = Simplify(copy(op), copy(mem))
+    @test res[1] == ['n']
+    @test res[2] == [1]
+
+    # Four operators same site
+    op = ['+', '-', '+', '-']
+    mem = [1, 1, 1, 1]
+
+    res = Simplify(copy(op), copy(mem))
+    @test res[1] == ['n']
+    @test res[2] == [1]
+end
+
+@testset "Interleaved sites with nontrivial signs" begin
+    # Fermionic swaps across multiple sites
+    op = ['+', '+', '+', '-', '-', '-']
+    mem = [1, 2, 3, 1, 2, 3]
+
+    res = Simplify(copy(op), copy(mem))
+
+    @test sort(res[2]) == [1,2,3]
+    @test all(x -> x ∈ ['n','h'], res[1])
+    @test res[3] == -1
+
+    # Odd swaps → negative sign
+    op = ['+', '+', '-', '+', '-', '-']
+    mem = [1, 2, 1, 3, 2, 3]
+
+    res = Simplify(copy(op), copy(mem))
+    @test res[3] == 1
+end
+
+@testset "Mixed operator types across sites" begin
+    op = ['+', 'n', '+', 'h', '-', 'n', '-', 'h']
+    mem = [1, 2, 1, 2, 1, 2, 1, 2]
+
+    res = Simplify(copy(op), copy(mem))
+
+    @test length(res[1]) == length(res[2])
+    @test all(m -> m ∈ [1,2], res[2])
+end
+
+@testset "Partial simplification (some sites reduce, others remain)" begin
+    op = ['+', '-', '+']
+    mem = [1, 1, 2]
+
+    res = Simplify(copy(op), copy(mem))
+
+    @test res[1] == ['n', '+']
+    @test res[2] == [1, 2]
+end
+
+@testset "Long chain with nested simplifications" begin
+    op = ['+', '-', 'n', '+', '-', 'n']
+    mem = [1, 1, 1, 2, 2, 2]
+
+    res = Simplify(copy(op), copy(mem))
+
+    @test res[1] == ['n', 'n']
+    @test res[2] == [1, 2]
+end
+
+@testset "Order dependence across long operators" begin
+    op1 = ['+', '+', '-', '-']
+    mem1 = [1, 2, 1, 2]
+
+    op2 = ['+', '-', '+', '-']
+    mem2 = [1, 1, 2, 2]
+
+    res1 = Simplify(copy(op1), copy(mem1))
+    res2 = Simplify(copy(op2), copy(mem2))
+
+    @test res1[1] == ['n', 'n']
+    @test res2[1] == ['n', 'n']
+    @test res1[3] != res2[3]  # different fermionic ordering
+end
+
+@testset "Idempotency" begin
+    op = ['+', '+', '-', '-', 'n']
+    mem = [1, 2, 1, 2, 1]
+
+    res1 = Simplify(copy(op), copy(mem))
+    res2 = Simplify(copy(res1[1]), copy(res1[2]))
+
+    @test res1[1:2] == res2[1:2]
+    @test res2[3] == 1
+end
+
+@testset "Large random-like structured case" begin
+    op = ['+', '+', '-', 'n', '+', '-', 'h', '-', '+']
+    mem = [1, 2, 1, 3, 2, 2, 3, 1, 3]
+
+    res = Simplify(copy(op), copy(mem))
+
+    @test length(res[1]) == length(res[2])
+    @test all(x -> x ∈ ['+', '-', 'n', 'h'], res[1])
+end
+
+@testset "Edge: long operator with no simplification" begin
+    op = ['+', '-', '+', '-', '+', '-']
+    mem = [1, 2, 3, 4, 5, 6]
+
+    res = Simplify(copy(op), copy(mem))
+
+    @test res[1] == op
+    @test res[2] == mem
+    @test res[3] == 1
+end
+
+@testset "Edge: alternating same-site far apart" begin
+    op = ['+', '+', '+', '-', '-', '-']
+    mem = [1, 1, 1, 1, 1, 1]
+
+    res = Simplify(copy(op), copy(mem))
+
+    @test res[3] == 0
 end

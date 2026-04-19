@@ -8,7 +8,7 @@ members [1, 1, 2, 3], because the first site is annihilated
 twice consecutively,
 """
 function CheckTrivial(
-        operator::String,
+        operator::Vector{Char},
         members::Vector{Int64},
     )
     @assert length(operator) == length(members)
@@ -143,7 +143,7 @@ function CreateProductOperator(
         if haskey(cachedOperators, (type[newIndices], members[newIndices]))
             newOperator = cachedOperators[(type[newIndices], members[newIndices])]
         else
-            if CheckTrivial(type[newIndices], members[newIndices])
+            if CheckTrivial([ch for ch in type[newIndices]], members[newIndices])
                 newOperator .= 0
             else
                 @inbounds for i in newIndices

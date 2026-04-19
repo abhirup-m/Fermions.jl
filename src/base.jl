@@ -569,12 +569,13 @@ julia> Dagger(operator)
 function Dagger(
         operator::Vector{Tuple{String,Vector{Int64},Float64}};
     )
-    for i in eachindex(operator)
-        newOpType, newMembers = Dagger(operator[i][1:2]...)
-        insert!(operator, i+1, (newOpType, newMembers, operator[i][3]'))
-        deleteat!(operator, i)
+    daggerOperator = copy(operator)
+    for i in eachindex(daggerOperator)
+        newOpType, newMembers = Dagger(daggerOperator[i][1:2]...)
+        insert!(daggerOperator, i+1, (newOpType, newMembers, daggerOperator[i][3]'))
+        deleteat!(daggerOperator, i)
     end
-    return operator
+    return daggerOperator
 end
 export Dagger
 
@@ -696,3 +697,48 @@ function Product(
     end
 end
 export Product
+
+
+function Simplify(
+        operator::Vector{Char},
+        members::Vector{Int64};
+    )
+    overallSign = 1
+    if CheckTrivial(operator, members)
+        return operator, members, 0
+    end
+    for (pos, (op, m)) in enumerate(zip(operator, members))
+        if  pos == length(members)
+            continue
+        end
+        posSame = findnext(==(m), members, pos + 1)
+        while !isnothing(posSame)
+            opSame = operator[posSame]
+            if op * opSame ∈ ["h+", "n-", "+n", "-h", "++", "--", "nh", "hn"]
+                return operator, members, 0
+            end
+            overallSign *= opSame ∈ "+-" ? (-1)^count(op -> op ∈ ['+', '-'], operator[(pos+1):(posSame-1)]) : 1
+            # since triviality has already been checked, the possible cases
+            # are: +-, -+, nn, hh, -n, +h, n+, h-
+            # Simplifications are: +- => n, -+ => h, nn => n, hh => h, -n and h- => -, +h and n+ => +
+            if op * opSame ∈ ["+-", "nn"]
+                operator[pos] = 'n'
+            end
+            if op * opSame ∈ ["-+", "hh"]
+                operator[pos] = 'h'
+            end
+            if op * opSame ∈ ["-n", "h-"]
+                operator[pos] = '-'
+            end
+            if op * opSame ∈ ["+h", "n+"]
+                operator[pos] = '+'
+            end
+            deleteat!(operator, posSame)
+            deleteat!(members, posSame)
+            op = operator[pos]
+            posSame = findnext(==(m), members, pos + 1)
+        end
+    end
+    return operator, members, overallSign
+end
+export Simplify

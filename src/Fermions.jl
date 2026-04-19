@@ -12,5 +12,6 @@ include("stateExpansion.jl")
 include("iterDiag.jl")
 include("thermalisation.jl")
 include("modelHamiltonians.jl")
+include("unitaryRG.jl")
 
 end
