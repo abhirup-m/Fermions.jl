@@ -407,7 +407,7 @@ function EffHamiltonian(
         if maximum(abs.(degeneracyMatrix)) > tolerance
             display(degeneracyMatrix)
         end
-        @assert maximum(abs.(degeneracyMatrix)) < tolerance maximum(abs.(degeneracyMatrix))
+        @assert maximum(abs.(degeneracyMatrix)) < tolerance  "Ground state subspace is non-trivially degenerate: Max transition matrix element = $(maximum(abs.(degeneracyMatrix)))"
     end
     highEnergySubspace = [Vi for (Ei, Vi) in zip(E, V) if abs(Ei - groundStateEnergy) > tolerance]
     shifts2nd = Dict{String, Float64}()
