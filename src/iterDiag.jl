@@ -807,6 +807,8 @@ function IterDiag(
     specFuncToCorrMap = Dict{String, Dict{String, Vector{String}}}()
     specFuncNames = String[]
     for (name, operatorPair) in specFuncDefDict
+        @assert haskey(operatorPair, "create")
+        @assert haskey(operatorPair, "destroy")
         specFuncToCorrMap[name] = Dict{String, Vector{String}}("create" => [], "destroy" => [])
         for (isDagger, operator) in operatorPair
             for term in operator
