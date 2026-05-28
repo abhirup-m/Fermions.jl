@@ -1,4 +1,4 @@
-using ProgressMeter
+using ProgressMeter, DSP
 
 """
     GenCorrelation(state, operator)

@@ -1,7 +1,5 @@
 module Fermions
 
-#=using ProgressMeter, LinearAlgebra, Combinatorics, Distributed, Dierckx, DSP=#
-
 include("constants.jl")
 include("base.jl")
 include("eigen.jl")
