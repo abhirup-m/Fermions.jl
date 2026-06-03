@@ -757,8 +757,8 @@ function SelfEnergy(
 
     if norm
         deltaOmega = freqValues[2:end] .- freqValues[1:end-1]
-        intGreensFunc ./= abs(imag(intGreensFunc[1:end-1]) .* deltaOmega)
-        nonIntGreensFunc ./= abs(imag(nonIntGreensFunc[1:end-1]) .* deltaOmega)
+        intGreensFunc ./= sum(abs.(imag(intGreensFunc[1:end-1]) .* deltaOmega))
+        nonIntGreensFunc ./= sum(abs.(imag(nonIntGreensFunc[1:end-1]) .* deltaOmega))
     end
 
     selfEnergy = 1 ./ nonIntGreensFunc .- 1 ./ intGreensFunc
