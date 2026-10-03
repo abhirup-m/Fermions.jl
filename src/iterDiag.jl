@@ -393,13 +393,11 @@ Rotate and enlarge old operators after each diagonalisation.
 function UpdateOldOperators(
         eigVals::Vector{Float64}, 
         identityEnv::Diagonal{Bool, Vector{Bool}}, 
-        stateIdentityEnv::Vector{Float64},
         newBasket::Vector{Tuple{String, Vector{Int64}}},
         operators::Dict{Tuple{String, Vector{Int64}}, Matrix{Float64}},
         rotation::Matrix{Float64}, 
         bondAntiSymmzer::Matrix{Float64},
         corrOperatorDict::Dict{String, Union{Nothing, Matrix{Float64}}},
-        stateVectors::Dict{String, Vector{Float64}},
     )
 
     # expanded diagonal hamiltonian
@@ -414,11 +412,6 @@ function UpdateOldOperators(
     for key in keys(operators)
         operators[key] = kron(rotation' * operators[key] * rotation, identityEnv)
     end
-    for (key, state) in stateVectors
-        stateVectors[key] = rotation' * state
-        stateVectors[key] ./= norm(stateVectors[key])
-        stateVectors[key] = kron(stateVectors[key], stateIdentityEnv)
-    end
     bondAntiSymmzer = rotation' * bondAntiSymmzer * rotation
 
     # rotate and enlarge operator needed to compute correlations
@@ -427,7 +420,7 @@ function UpdateOldOperators(
             corrOperatorDict[name] = kron(rotation' * corrOperator * rotation, identityEnv)
         end
     end
-    return hamltMatrix, operators, bondAntiSymmzer, corrOperatorDict, stateVectors
+    return hamltMatrix, operators, bondAntiSymmzer, corrOperatorDict
 end
 export UpdateOldOperators
 
@@ -443,9 +436,9 @@ function IterDiag(
     maxSize::Int64,
     symmetries::Vector{Char},
     correlationDefDict::Dict{String, Vector{Tuple{String, Vector{Int64}, Float64}}},
-    stateDict::Dict{String, Dict{BitVector,Float64}},
     quantumNoReq::Union{Nothing,Function},
     corrQuantumNoReq::Union{Nothing,Function},
+    transform::Function,
     degenTol::Float64,
     dataDir::String,
     silent::Bool,
@@ -481,7 +474,6 @@ function IterDiag(
     # that must be created at each step.
     operators, bondAntiSymmzer, hamltMatrix, newSitesFlow, create, basket = InitiateMatrices(currentSites, hamltFlow, initBasis)
 
-    stateVectors = Dict(name => ExpandIntoBasis(state, initBasis) for (name, state) in stateDict)
 
     # if there are correlations, add them to the set of
     # operators that must be created and updated
@@ -563,7 +555,6 @@ function IterDiag(
                                                 "currentSites" => currentSites,
                                                 "newSites" => newSitesFlow[step],
                                                 "bondAntiSymmzer" => bondAntiSymmzer,
-                                                "stateVectors" => stateVectors,
                                                 "results" => results,
                                                )
                          )
@@ -577,7 +568,6 @@ function IterDiag(
         newBasis = BasisStates(length(newSitesFlow[step+1]))
 
         identityEnv = length(newSitesFlow[step+1]) == 1 ? I(2) : kron(fill(I(2), length(newSitesFlow[step+1]))...)
-        stateIdentityEnv = kron([[1., 0.] for _ in 1:length(newSitesFlow[step+1])]...)
 
         # save data
         saveDict = Dict("basis" => rotation,
@@ -587,7 +577,6 @@ function IterDiag(
                         "newSites" => newSitesFlow[step],
                         "bondAntiSymmzer" => bondAntiSymmzer,
                         "identityEnv" => identityEnv,
-                        "stateVectors" => stateVectors,
                         "results" => results,
                        )
 
@@ -616,14 +605,13 @@ function IterDiag(
         hamltMatrix, operators, bondAntiSymmzer, corrOperatorDict = UpdateOldOperators(
                                                                                        eigVals,
                                                                                        identityEnv,
-                                                                                       stateIdentityEnv,
                                                                                        basket[step+1], 
                                                                                        operators,
                                                                                        rotation,
                                                                                        bondAntiSymmzer,
                                                                                        corrOperatorDict,
-                                                                                       stateVectors,
                                                                                       )
+        hamltMatrix = transform(hamltMatrix);
 
         # define the qbit operators for the new sites
         for site in newSitesFlow[step+1] 
@@ -695,7 +683,7 @@ function IterDiag(
     vneDefDict::Dict{String, Vector{Int64}}=Dict{String, Vector{Int64}}(),
     mutInfoDefDict::Dict{String, NTuple{2,Vector{Int64}}}=Dict{String, NTuple{2,Vector{Int64}}}(),
     specFuncDefDict::Dict{String, Dict{String, Vector{Tuple{String, Vector{Int64}, Float64}}}}=Dict{String, Dict{String, Vector{Tuple{String, Vector{Int64}, Float64}}}}(),
-    stateDict::Dict{String, Dict{BitVector,Float64}}=Dict{String, Dict{BitVector,Float64}}(),
+    transform::Union{Function,Nothing}=nothing,
     silent::Bool=false,
     maxMaxSize::Int64=0,
     excludeLevels::Function=x -> false,
@@ -730,6 +718,10 @@ function IterDiag(
     end
     if !isnothing(magzReq)
         @assert 'S' in symmetries
+    end
+
+    if isnothing(transform)
+        transform = H -> H
     end
 
     # reduce the mutual information calculation to that of VNE.
@@ -844,9 +836,9 @@ function IterDiag(
                       maxSize, 
                       symmetries,
                       correlationDefDict,
-                      stateDict,
                       quantumNoReq, 
                       corrQuantumNoReq,
+                      transform,
                       degenTol,
                       dataDir,
                       silent,

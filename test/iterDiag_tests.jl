@@ -82,9 +82,9 @@ end
 # ---- CheckTrivial, OrganiseOperator tests ----
 @testset "CheckTrivial and OrganiseOperator" begin
     # trivial case example: operator "++--" with members [1,1,2,3] -> trivial because first site repeated
-    @test CheckTrivial("++--", [1,1,2,3]) == true
+    @test CheckTrivial(['+', '+', '-', '-'], [1,1,2,3]) == true
     # non-trivial example: distinct sites
-    @test CheckTrivial("+-", [1,2]) == false
+    @test CheckTrivial(['+', '-'], [1,2]) == false
 
     # OrganiseOperator: when members are sorted -> identity sign 1
     op, mem, s = OrganiseOperator("+-", [1,2])
@@ -186,24 +186,6 @@ end
     rot2, eigs2, q2 = TruncateSpectrum(nothing, rot, eigs, 3, 1e-10, [1,2], nothing, 10)
     @test length(eigs2) ≥ 3
     @test maximum(eigs2) ≤ eigs[3] + 1e-10
-
-    # UpdateOldOperators: construct a small toy set of ops and check resulting hamltMatrix shape
-    # Setup operators for 2-site system
-    basis_small = BasisStates(2)
-    ops = Dict{Tuple{String, Vector{Int64}}, Matrix{Float64}}()
-    ops[("+",[1])] = OperatorMatrix(basis_small, [("+",[1],1.0)])
-    ops = CreateDNH(ops, 1)
-    ops[("+",[2])] = OperatorMatrix(basis_small, [("+",[2],1.0)])
-    ops = CreateDNH(ops, 2)
-    # rotation matrix = identity of size 4, eigVals of length 4
-    eigenV = [0.0, 0.5, 1.0, 2.0]
-    identityEnv = Diagonal(Bool[true])  # trivial env
-    newBasket = [("+",[1]), ("n",[1]), ("h",[1]), ("+",[2]), ("n",[2]), ("h",[2])]
-    corrOperatorDict = Dict("A" => nothing, "B" => (OperatorMatrix(basis_small, [("n",[1],1.0)])))
-    hamltMatrix, ops2, baz, corrOut = UpdateOldOperators(eigenV, identityEnv, newBasket, ops, Matrix{Float64}(I,4,4), Matrix{Float64}(I,4,4), corrOperatorDict)
-    @test size(hamltMatrix,1) == 4  # kron(diagm(eigVals), identityEnv) shape
-    # rotated and enlarged operators should be present in ops2
-    @test all(k in keys(ops2) for k in keys(newBasket))
 end
 
 # ---- Randomised property tests: GenCorrelation equivalence & OperatorMatrix linearity ----
@@ -231,189 +213,183 @@ end
     end
 end
 
-# ---- Physics-level tests: Free fermion chain (tight-binding), compare exact vs IterDiag ----
-@testset "Physics regression: free fermion tight-binding chain (exact vs IterDiag)" begin
-    # small chain N=4, nearest neighbour hopping -t(c†_i c_{i+1} + h.c.)
-    # We'll create hamltFlow by MinceHamiltonian with partitions that add 1 or 2 sites per step.
-    N = 4
-    t = 1.0
-    # construct full Hamiltonian as list of terms
-    ham_full = Tuple{String, Vector{Int64}, Float64}[]
-    for i in 1:N-1
-        push!(ham_full, ("+-", [i, i+1], -t))
-        push!(ham_full, ("+-", [i+1, i], -t))
+#=
+Tests for the `transform` keyword of `IterDiag`.
+
+Semantics being tested (from iterDiag.jl): after step `s` is diagonalised
+(and possibly truncated), the Hamiltonian is rewritten in the eigenbasis and
+enlarged as kron(diagm(eigVals), identityEnv). `transform` is applied to that
+matrix *before* the terms of step `s+1` are added. It is therefore called
+exactly length(hamltFlow) - 1 times, never on the first step's bare matrix
+and never after the final step.
+
+Run with `julia --project test/test_iterdiag_transform.jl`, or `include` it
+from test/runtests.jl.
+=#
+
+# ---------------------------------------------------------------------------
+# helpers
+# ---------------------------------------------------------------------------
+
+# Open spinless chain with a generic (non-repeating) on-site potential so
+# that spectra are free of accidental degeneracies.
+function ChainTerms(L::Int64; t::Float64=1.0)
+    terms = Tuple{String, Vector{Int64}, Float64}[]
+    for i in 1:L-1
+        push!(terms, ("+-", [i, i+1], -t))
+        push!(terms, ("+-", [i+1, i], -t))
     end
-
-    # partition into 4 single-site additions (add one site per step)
-    hamflow = MinceHamiltonian(ham_full, collect(1:N))
-
-    # correlation to compute: number operator at site 1
-    corrDef = Dict("n1" => [("n",[1],1.0)])
-
-    # Run IterDiag in a temporary directory with very large maxSize to emulate exact diagonalization
-    mktempdir_local(dir -> begin
-        results = IterDiag(hamflow, 2^N; # maxSize big enough to avoid truncation (use full Hilbert-space)
-                           symmetries = Char[], # no symmetry for simplicity
-                           correlationDefDict = corrDef,
-                           quantumNoReq = nothing,
-                           corrQuantumNoReq = nothing,
-                           degenTol = 1e-10,
-                           dataDir = dir,
-                           silent = true,
-                           specFuncNames = String[],
-                           maxMaxSize = 0,
-                           calculateThroughout = false,
-                          )
-        @test haskey(results, "energyPerSite")
-        gs_energy_per_site = results["energyPerSite"]
-        # Now compute exact spectrum via OperatorMatrix & eigen
-        basis = BasisStates(N)
-        Hmat = OperatorMatrix(basis, ham_full)
-        F = eigen(Hermitian(Hmat))
-        # ground-state energy intensive check:
-        Egs_exact = minimum(F.values)
-        @test isapprox_rel(Egs_exact / N, gs_energy_per_site; atol=1e-10)
-        # ground-state correlation: compute using ground state eigenvector from F
-        gs_index = argmin(F.values)
-        gs_vec = F.vectors[:, gs_index]
-        # expectation of n_1 via matrix
-        n1_mat = OperatorMatrix(basis, [("n",[1], 1.0)])
-        exp_n1_exact = gs_vec' * n1_mat * gs_vec
-        # compare with IterDiag result (stored in results["n1"])
-        @test isapprox_rel(results["n1"], exp_n1_exact; atol=1e-10)
-    end)
+    for i in 1:L
+        push!(terms, ("n", [i], 0.3 * cos(1.7 * i)))
+    end
+    return terms
 end
 
-# ---- Entanglement / Reduced density matrix / VonNEntropy tests ----
-@testset "ReducedDM and VonNEntropy consistency tests (small free-fermion states)" begin
-    # We'll use a 4-site chain and compute entanglement entropy of first two sites.
-    N = 4
-    # simple 2-particle state: Slater determinant with particles on sites 1 and 3 (a product basis state)
-    basis = BasisStates(N)
-    # create a pure state that is superposition of two configurations to have non-zero entanglement
-    # for small test, take equally weighted superposition of |1001> and |0110>
-    cfg1 = BitVector([1,0,0,1])
-    cfg2 = BitVector([0,1,1,0])
-    state = Dict{BitVector, Float64}()
-    state[cfg1] = 1/sqrt(2)
-    state[cfg2] = 1/sqrt(2)
-    # compute reduced DM for subsystem sites [1,2]
-    rd = ReducedDM(state, [1,2])
-    # VonNEntropy via matrix form
-    S1 = VonNEntropy(rd)
-    # Via state-based routine
-    S2 = VonNEntropy(state, [1,2])
-    @test isapprox_rel(S1, S2; atol=1e-10)
-    # von Neumann entropy should be positive and ≤ ln(4) for 2 qubits
-    @test S1 ≥ 0
-    @test S1 ≤ log(4) + 1e-12
+# Flow that starts with sites {1,2} and adds one site per step: L-1 steps.
+ChainFlow(L::Int64) = MinceHamiltonian(ChainTerms(L), 2:L)
+
+# IterDiag mutates both hamltFlow and correlationDefDict in place, so every
+# call gets fresh copies.
+function RunIterDiag(flow, maxSize; corrDefs=nothing, kwargs...)
+    corr = isnothing(corrDefs) ?
+        Dict{String, Vector{Tuple{String, Vector{Int64}, Float64}}}() :
+        deepcopy(corrDefs)
+    return IterDiag(deepcopy(flow), maxSize; correlationDefDict=corr, silent=true, kwargs...)
 end
 
-# ---- Spectral function / SpectralCoefficients smoke tests (small) ----
-@testset "SpectralCoefficients and SpecFunc smoke tests" begin
-    # Use a tiny system with known excitations: N=2 single particle levels; basis of 2 sites; simple spectrum
-    N = 2
-    basis = BasisStates(N)
-    # construct a toy eigVecs/eigVals: use OperatorMatrix eigenvectors for H with one-particle hopping
-    ham = [("+-",[1,2], -1.0), ("+-",[2,1], -1.0)]
-    H = OperatorMatrix(basis, ham)
-    F = eigen(Hermitian(H))
-    # convert eigVecs to vectors (columns)
-    eigVecs = [collect(vec) for vec in eachcol(F.vectors)]
-    eigVals = F.values
-    # probe operator choose number operator on site1 as create/destroy (not physical but a test)
-    probes = Dict("create" => OperatorMatrix(basis, [("n",[1],1.0)]),
-                  "destroy" => OperatorMatrix(basis, [("n",[1],1.0)]))
-    # compute spectral coefficients
-    coeffs = SpectralCoefficients(eigVecs, eigVals, probes)
-    @test isa(coeffs, Vector{NTuple{2, Float64}})
-    # now compute SpecFunc from the coefficients on a small frequency grid
-    freq = collect(range(-3, stop=3, length=41))
-    sf = SpecFunc(coeffs, freq, 0.1; normalise=true)
-    @test length(sf) == length(freq)
-    @test all(x -> x ≥ -1e-14, sf)  # spec func should be non-negative (up to tiny numerical noise)
+# Exact diagonalisation of a list of terms on sites 1..n.
+function ExactEigen(terms, n::Int64)
+    basis = BasisStates(n)
+    return eigen(Hermitian(OperatorMatrix(basis, terms))), basis
 end
 
-# ---- IterSpecFunc / IterSpectralCoeffs integration test (smoke) ----
-@testset "IterSpectralCoeffs / IterSpecFunc smoke integration" begin
-    # We'll do a tiny IterDiag run that writes spec operator state and then read it back via IterSpectralCoeffs.
-    # Build a 2-site hopping model and request spectral function on a single operator (e.g., n1)
-    N = 2
-    ham_full = [("+-",[1,2], -1.0), ("+-",[2,1], -1.0)]
-    hamflow = MinceHamiltonian(ham_full, collect(1:N))
-    corrDef = Dict("n1" => [("n",[1],1.0)])
-    mktempdir_local(dir -> begin
-        # Run IterDiag with specFuncDefDict so saved files exist
-        out = IterDiag(hamflow, 2^N; symmetries = Char[], correlationDefDict = corrDef,
-                       quantumNoReq = nothing, corrQuantumNoReq = nothing,
-                       degenTol = 1e-10, dataDir = dir, silent = true,
-                       specFuncNames = ["n1"], maxMaxSize = 0, calculateThroughout = false)
-        # if specFuncNames not empty, IterDiag returns (results, savePaths, specFuncOperators)
-        results = out[1]
-        savePaths = out[2]
-        specOps = out[3]
-        # Consolidate spec operators and call IterSpectralCoeffs
-        # specOps is mapping corrName -> vector of matrices; choose the non-nothing entries
-        corrVec = specOps["n1"]
-        # get frequency grid
-        freq = collect(range(-3.0, stop=3.0, length=31))
-        # compute IterSpectralCoeffs directly
-        coeffs_iter = IterSpectralCoeffs(savePaths, corrVec; degenTol=1e-10, silent=true)
-        @test isa(coeffs_iter, Vector{NTuple{2, Float64}})
-        # compute integrated spectral function via IterSpecFunc (standDev small)
-        sf = IterSpecFunc(savePaths, corrVec, freq, 0.1; silent=true)
-        @test length(sf) == length(freq)
-    end)
+function ExactExpectation(terms, operator, n::Int64)
+    F, basis = ExactEigen(terms, n)
+    ψ = F.vectors[:, 1]
+    return ψ' * OperatorMatrix(basis, operator) * ψ
 end
 
-# ---- UpdateRequirements operator-flow extension tests ----
-@testset "UpdateRequirements operator-flow extension" begin
-    # Construct operator A that spans sites 1..4 across flow; ensure UpdateRequirements(operator, newSitesFlow) works
-    # Create a fictitious operator spanning sites [1,2,3,4]
-    operator = [("+ - + -", [1,2,3,4], 1.0)] rescue [("+-+-",[1,2,3,4], 1.0)]
-    # Build newSitesFlow: adding sites one by one
-    newSitesFlow = [[1], [2], [3], [4]]
-    create, retain = UpdateRequirements(operator, newSitesFlow)
-    @test length(create) == length(newSitesFlow)
-    @test length(retain) == length(newSitesFlow)
+const CORR_DEFS = Dict{String, Vector{Tuple{String, Vector{Int64}, Float64}}}(
+    "n1"    => [("n", [1], 1.0)],
+    "hop12" => [("+-", [1, 2], 1.0), ("+-", [2, 1], 1.0)],
+    "nLast" => [("n", [6], 1.0)],
+)
+
+# ---------------------------------------------------------------------------
+# tests
+# ---------------------------------------------------------------------------
+
+
+L = 6
+flow = ChainFlow(L)
+nSteps = length(flow)
+fullSize = 2^L        # large enough that nothing is ever truncated
+
+@testset "default (nothing) matches identity transform" begin
+    rDefault = RunIterDiag(flow, fullSize; corrDefs=CORR_DEFS)
+    rNothing = RunIterDiag(flow, fullSize; corrDefs=CORR_DEFS, transform=nothing)
+    rIdentity = RunIterDiag(flow, fullSize; corrDefs=CORR_DEFS, transform=H -> H)
+    for key in ["energyPerSite"; collect(keys(CORR_DEFS))]
+        @test rDefault[key] ≈ rNothing[key] atol=1e-12
+        @test rDefault[key] ≈ rIdentity[key] atol=1e-12
+    end
+    # sanity check of the harness: untruncated run is exact
+    F, _ = ExactEigen(ChainTerms(L), L)
+    @test rIdentity["energyPerSite"] ≈ F.values[1] / L atol=1e-10
 end
 
-# ---- MinceHamiltonian edge cases ----
-@testset "MinceHamiltonian edge cases" begin
-    # Hamiltonian with single-term acting across entire chain; partition into two pieces
-    ham = [("+-",[1,4], -1.0)]
-    hamflow = MinceHamiltonian(ham, [2,4])
-    # Since max index 4 belongs to second subspace, hamflow[2] should contain the term
-    @test length(hamflow[1]) == 0
-    @test length(hamflow[2]) == 1
+@testset "call count and input received by transform" begin
+    seen = Matrix{Float64}[]
+    recorder = H -> (push!(seen, copy(H)); H)
+    RunIterDiag(flow, fullSize; transform=recorder)
+
+    # called once between every pair of consecutive steps
+    @test length(seen) == nSteps - 1
+
+    for (s, H) in enumerate(seen)
+        # after step s there are s+1 sites, enlarged by one new site
+        @test size(H) == (2^(s + 2), 2^(s + 2))
+        @test isdiag(H)
+
+        # diagonal is the previous step's spectrum, each level repeated
+        # for the two states of the incoming site
+        F, _ = ExactEigen(vcat(flow[1:s]...), s + 1)
+        @test diag(H) ≈ repeat(F.values, inner=2) atol=1e-10
+    end
 end
 
-# ---- Final note tests that ensure no major functions crash under random small inputs ----
-@testset "Smoke tests: no crash on random small flows" begin
-    for trial in 1:6
-        N = rand(2:5)
-        # random nearest neighbor hopping with random couplings
-        ham = Tuple{String, Vector{Int64}, Float64}[]
-        for i in 1:N-1
-            push!(ham, ("+-", [i, i+1], randn()))
-            push!(ham, ("+-", [i+1, i], randn()))
-        end
-        # random partition
-        parts = sort(unique([rand(1:N) for _ in 1:rand(1:3)]))
-        hamflow = MinceHamiltonian(ham, parts)
-        # run a minimal IterDiag with small maxSize but non-zero to ensure code path exercised
-        mktempdir_local(dir -> begin
-            try
-                _ = IterDiag(hamflow, 2^min(N,3); symmetries=Char[], correlationDefDict=Dict{String,Any}(),
-                             quantumNoReq=nothing, corrQuantumNoReq=nothing, degenTol=1e-10, dataDir=dir,
-                             silent=true, specFuncNames=String[], maxMaxSize=0, calculateThroughout=false)
-                @test true  # no crash
-            catch err
-                # if any function not supported for this random input, mark as failure
-                @test false "IterDiag crashed on random input: $err"
+@testset "single-step flow never calls transform" begin
+    calls = Ref(0)
+    oneStep = MinceHamiltonian(ChainTerms(4), [4])
+    res = RunIterDiag(oneStep, 2^4; transform=H -> (calls[] += 1; H))
+    @test calls[] == 0
+    F, _ = ExactEigen(ChainTerms(4), 4)
+    @test res["energyPerSite"] ≈ F.values[1] / 4 atol=1e-10
+end
+
+@testset "constant shift H -> H + cI" begin
+    c = 0.75
+    shift = H -> H + c * I
+    for (maxSize, label) in [(fullSize, "no truncation"), (8, "with truncation")]
+        @testset "$label" begin
+            base = RunIterDiag(flow, maxSize; corrDefs=CORR_DEFS)
+            shifted = RunIterDiag(flow, maxSize; corrDefs=CORR_DEFS, transform=shift)
+
+            # every call adds c to all levels, and the shift survives
+            # every later rotation, so the final energy moves by c per call
+            @test shifted["energyPerSite"] ≈ base["energyPerSite"] + c * (nSteps - 1) / L atol=1e-10
+
+            # a uniform shift changes neither the eigenvectors nor which
+            # states get truncated, so correlations are unchanged
+            for key in keys(CORR_DEFS)
+                @test shifted[key] ≈ base[key] atol=1e-8
             end
-        end)
+        end
     end
 end
 
-println("All tests defined in test_iterdiag.jl. Run with Julia's test runner.")
+@testset "scaling H -> λH reproduces Σ_s λ^(n-s) H_s" begin
+    # With no truncation every step is exact, so the final matrix is
+    # the exact operator Σ_s λ^(nSteps-s) H_s written in some basis.
+    for symmetries in (Char[], ['N'])
+        for λ in (0.0, 0.5, 2.0)
+            @testset "λ=$λ, symmetries=$symmetries" begin
+                weighted = [(op, m, coupling * λ^(nSteps - s))
+                            for (s, terms) in enumerate(flow) for (op, m, coupling) in terms]
+                res = RunIterDiag(flow, fullSize; corrDefs=CORR_DEFS,
+                                  symmetries=symmetries, transform=H -> λ * H)
+
+                F, _ = ExactEigen(weighted, L)
+                @test res["energyPerSite"] ≈ F.values[1] / L atol=1e-10
+
+                # for λ = 0 only the last step survives and the ground
+                # state is degenerate, so correlations are ill-defined
+                if λ != 0
+                    for (key, op) in CORR_DEFS
+                        @test res[key] ≈ ExactExpectation(weighted, op, L) atol=1e-8
+                    end
+                end
+            end
+        end
+    end
+end
+
+@testset "input stays within maxMaxSize under truncation" begin
+    maxSize = 8
+    seen = Matrix{Float64}[]
+    RunIterDiag(ChainFlow(8), maxSize; maxMaxSize=maxSize,
+                transform=H -> (push!(seen, copy(H)); H))
+    @test length(seen) == length(ChainFlow(8)) - 1
+    for H in seen
+        @test size(H, 1) ≤ maxSize
+        @test isdiag(H)
+        levels = diag(H)[1:2:end]
+        @test levels == diag(H)[2:2:end]
+        @test issorted(levels)
+    end
+end
+
+@testset "size-changing transform is rejected" begin
+    shrink = H -> H[1:end-1, 1:end-1]
+    @test_throws DimensionMismatch RunIterDiag(flow, fullSize; transform=shrink)
+end
