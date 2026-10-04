@@ -523,9 +523,13 @@ function IterDiag(
     pbar = Progress(length(hamltFlow); enabled=!silent)
     for (step, hamlt) in enumerate(hamltFlow)
         # construct the Hamiltonian for this step
+        deltaHamiltonian = 0 .* hamltMatrix
         for (type, members, strength) in hamlt
-            hamltMatrix += strength * operators[(type, members)]
+            # hamltMatrix += strength * operators[(type, members)]
+            deltaHamiltonian += strength * operators[(type, members)]
         end
+        # hamltMatrix += deltaHamiltonian
+        hamltMatrix = transform(hamltMatrix, deltaHamiltonian, step);
         
         # get spectrum
         eigVals, rotation, quantumNos = Diagonalise(hamltMatrix, quantumNos)
@@ -611,8 +615,6 @@ function IterDiag(
                                                                                        bondAntiSymmzer,
                                                                                        corrOperatorDict,
                                                                                       )
-        hamltMatrix = transform(hamltMatrix);
-
         # define the qbit operators for the new sites
         for site in newSitesFlow[step+1] 
             operators[("+", [site])] = kron(bondAntiSymmzer, OperatorMatrix(newBasis, [("+", [site - length(currentSites)], 1.0)]))
@@ -721,7 +723,7 @@ function IterDiag(
     end
 
     if isnothing(transform)
-        transform = H -> H
+        transform = (H_i_minus_1, H_i, i) -> H_i_minus_1 + H_i
     end
 
     # reduce the mutual information calculation to that of VNE.
