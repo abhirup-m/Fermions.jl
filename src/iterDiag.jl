@@ -466,7 +466,7 @@ function IterDiag(
 
     # get the filenames for saving data
     savePaths = nothing 
-    if !isempty(specFuncNames)
+    if !isempty(specFuncNames) || save
         savePaths = SetupDataWrite(dataDir, hamltFlow, initBasis, currentSites, symmetries)
     end
 
@@ -589,7 +589,8 @@ function IterDiag(
                         "results" => results,
                        )
 
-        if !isempty(specFuncNames) || save
+        println(savePaths)
+        if !isnothing(savePaths)
             serialize(savePaths[step], saveDict)
         end
 
