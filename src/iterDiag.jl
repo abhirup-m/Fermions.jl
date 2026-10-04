@@ -439,6 +439,7 @@ function IterDiag(
     quantumNoReq::Union{Nothing,Function},
     corrQuantumNoReq::Union{Nothing,Function},
     transform::Function,
+    normaliseZero::Bool,
     degenTol::Float64,
     dataDir::String,
     silent::Bool,
@@ -533,6 +534,10 @@ function IterDiag(
         
         # get spectrum
         eigVals, rotation, quantumNos = Diagonalise(hamltMatrix, quantumNos)
+
+        if normaliseZero
+            eigVals = eigVals .- minimum(eigVals)
+        end
 
         if step == length(hamltFlow)
 
@@ -686,6 +691,7 @@ function IterDiag(
     mutInfoDefDict::Dict{String, NTuple{2,Vector{Int64}}}=Dict{String, NTuple{2,Vector{Int64}}}(),
     specFuncDefDict::Dict{String, Dict{String, Vector{Tuple{String, Vector{Int64}, Float64}}}}=Dict{String, Dict{String, Vector{Tuple{String, Vector{Int64}, Float64}}}}(),
     transform::Union{Function,Nothing}=nothing,
+    normaliseZero::Bool=false,
     silent::Bool=false,
     maxMaxSize::Int64=0,
     excludeLevels::Function=x -> false,
@@ -841,6 +847,7 @@ function IterDiag(
                       quantumNoReq, 
                       corrQuantumNoReq,
                       transform,
+                      normaliseZero,
                       degenTol,
                       dataDir,
                       silent,
