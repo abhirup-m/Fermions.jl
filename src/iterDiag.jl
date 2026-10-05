@@ -466,7 +466,7 @@ function IterDiag(
 
     # get the filenames for saving data
     savePaths = nothing 
-    if !isempty(specFuncNames) || save
+    if save
         savePaths = SetupDataWrite(dataDir, hamltFlow, initBasis, currentSites, symmetries)
     end
 
@@ -535,8 +535,10 @@ function IterDiag(
         # get spectrum
         eigVals, rotation, quantumNos = Diagonalise(hamltMatrix, quantumNos)
 
+        shift = 0.
         if normaliseZero
-            eigVals = eigVals .- minimum(eigVals)
+            shift = minimum(eigVals)
+            eigVals = eigVals .- shift
         end
 
         if step == length(hamltFlow)
@@ -557,13 +559,14 @@ function IterDiag(
             end
             #
             # if this is the last step, save data and calculate any correlations
-            if !isempty(specFuncNames) || save
+            if !isnothing(savePaths)
                 serialize(savePaths[step], Dict("basis" => rotation,
                                                 "eigVals" => eigVals,
                                                 "quantumNos" => quantumNos,
                                                 "currentSites" => currentSites,
                                                 "newSites" => newSitesFlow[step],
                                                 "bondAntiSymmzer" => bondAntiSymmzer,
+                                                "shift" => shift,
                                                 "results" => results,
                                                )
                          )
@@ -586,10 +589,10 @@ function IterDiag(
                         "newSites" => newSitesFlow[step],
                         "bondAntiSymmzer" => bondAntiSymmzer,
                         "identityEnv" => identityEnv,
+                        "shift" => shift,
                         "results" => results,
                        )
 
-        println(savePaths)
         if !isnothing(savePaths)
             serialize(savePaths[step], saveDict)
         end
@@ -709,8 +712,11 @@ function IterDiag(
     for quant in [correlationDefDict, vneDefDict, mutInfoDefDict, specFuncDefDict]
         append!(retainKeys, [k for k in keys(quant)])
     end
+    if save
+        push!(retainKeys, "savePaths")
+    end
     if !isempty(specFuncDefDict)
-        append!(retainKeys, ["specFuncOperators", "savePaths"])
+        push!(retainKeys, "specFuncOperators")
     end
 
     # ensure that all the keys are unique,
