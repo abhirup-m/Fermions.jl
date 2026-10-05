@@ -196,16 +196,13 @@ into a single if-condition.
 function CombineRequirements(
         occReq::Union{Nothing,Function},
         magzReq::Union{Nothing,Function},
-        symmetries::Vector{Char},
     )
-    occIndex = findfirst(==('N'), symmetries)
-    magzIndex = findfirst(==('S'), symmetries)
     if !isnothing(occReq) && isnothing(magzReq)
-        requirement = (q, N) -> occReq(q[occIndex], N)
+        requirement = (q, N) -> occReq(q[1], N)
     elseif isnothing(occReq) && !isnothing(magzReq)
-        requirement = (q, N) -> magzReq(q[magzIndex], N)
+        requirement = (q, N) -> magzReq(q[2], N)
     elseif !isnothing(occReq) && !isnothing(magzReq)
-        requirement = (q, N) -> occReq(q[occIndex], N) && magzReq(q[magzIndex], N)
+        requirement = (q, N) -> occReq(q[1], N) && magzReq(q[2], N)
     else
         requirement = nothing
     end
@@ -225,26 +222,23 @@ function QuantumNosForBasis(
     )
 
     # obtain the symmetry operators as requested.
-    symmetryOperators = Vector{Tuple{String,Vector{Int64},Float64}}[]
-
-    # if 'N' is provided, total number operator commutes.
-    if 'N' in symmetries
-        push!(symmetryOperators, [("n", [i], 1.) for i in eachindex(currentSites)])
-    end
-    # if 'S' is provided, total Sz operator commutes.
-    if 'S' in symmetries
-        push!(symmetryOperators, [("n", [i], (-1)^(site+1)) for (i, site) in enumerate(currentSites)])
-    end
-
-    if !isempty(symmetries)
-        
-        # for each vector |Ψ⟩ in the basis, calculate the quantum numbers using
-        # (⟨Ψ|O_1|Ψ⟩, ⟨Ψ|O_2|Ψ⟩), where O_1 and O_2 are the symmetry operators.
-        return [Tuple(round(Int, GenCorrelation(state, operator)) for operator in symmetryOperators) 
-                      for state in basisStates]
-    else
+    symmetryOperators = Dict('N' => [("n", [i], 1.) for i in eachindex(currentSites)], 'S' => [("n", [i], (-1)^(i+1)) for i in eachindex(currentSites)])
+    types = [k ∈ symmetries ? Int64 : Nothing for k in keys(symmetryOperators)]
+    init = [k ∈ symmetries ? 0. : nothing for k in keys(symmetryOperators)]
+    if isempty(symmetries)
         return nothing
     end
+    quantumNos = Tuple{types...}[Tuple(init) for _ in basisStates]
+    for (i, state) in enumerate(basisStates)
+        for (i, (name, operator)) in enumerate(symmetryOperators)
+            if name in symmetries
+                # for each vector |Ψ⟩ in the basis, calculate the quantum numbers using
+                # (⟨Ψ|O|Ψ⟩, where O is the symmetry operator.
+                quantumNos[i] = round(Int, GenCorrelation(state, operator))
+            end
+        end
+    end
+    return quantumNos
 end
 export QuantumNosForBasis
 
@@ -294,7 +288,7 @@ Obtain spectrum of Hamiltonian, making use of symmetries if available.
 """
 function Diagonalise(
         hamltMatrix::Matrix{Float64},
-        quantumNos::Union{Nothing, Vector{NTuple{1, Int64}}, Vector{NTuple{2, Int64}}},
+        quantumNos::Union{Nothing, Vector{Tuple{Int64, Nothing}}, Vector{Tuple{Nothing, Int64}}, Vector{NTuple{2, Int64}}},
     )
     # initialise matrix and vector to store eigenvectors and eigenvalues
     eigenVecs = zeros(size(hamltMatrix)...)
@@ -626,9 +620,13 @@ function IterDiag(
         # update the quantum numbers, due to newly added sites
         if !isnothing(quantumNos)
             newQuantumNos = QuantumNosForBasis(newSitesFlow[step+1], symmetries, newBasis)
-
-            quantumNos = vcat([[quantumNo .+ newQuantumNo for newQuantumNo in newQuantumNos]
-                           for quantumNo in quantumNos]...)
+            appendQuantumNos = []
+            for quantumNo in quantumNos, newQuantumNo in newQuantumNos
+                quantumNo = map(q -> isnothing(q) ? 0 : q, quantumNo)
+                newQuantumNo = map(q -> isnothing(q) ? 0 : q, newQuantumNo)
+                push!(appendQuantumNos, quantumNo .+ newQuantumNo)
+            end
+            quantumNos = copy(appendQuantumNos)
         end
 
         # rotate and enlarge existing operators
@@ -856,8 +854,8 @@ function IterDiag(
     # consolidate the quantum number requirements (such as
     # a specific filling or a specific magnetisation sector)
     # into a single if-condition.
-    quantumNoReq = CombineRequirements(occReq, magzReq, symmetries)
-    corrQuantumNoReq = CombineRequirements(corrOccReq, corrMagzReq, symmetries)
+    quantumNoReq = CombineRequirements(occReq, magzReq)
+    corrQuantumNoReq = CombineRequirements(corrOccReq, corrMagzReq)
 
     # perform the actual iterative diagonalisation. savePaths
     # contains the filepaths where data is saved; results
@@ -913,7 +911,6 @@ function IterDiag(
             results[name] = IterSpectralCoeffs(results["savePaths"], 
                                                specFuncOperatorsConsolidated[name];
                                                degenTol=degenTol, occReq=occReq,
-                                               symmetries=symmetries,
                                                magzReq=magzReq, excOccReq=excOccReq,
                                                excMagzReq=excMagzReq, 
                                                excludeLevels=excludeLevels,
@@ -987,7 +984,6 @@ function IterSpecFunc(
         freqValues::Vector{Float64},
         standDev::Union{Vector{Float64}, Float64};
         degenTol::Float64=0.,
-        symmetries::Vector{Char}=Char[],
         occReq::Union{Nothing,Function}=nothing,
         magzReq::Union{Nothing,Function}=nothing,
         excOccReq::Union{Nothing,Function}=nothing,
@@ -1001,7 +997,6 @@ function IterSpecFunc(
     )
     specCoeffs = IterSpectralCoeffs(savePaths, specFuncOperators;
                                             degenTol=degenTol, occReq=occReq,
-                                            symmetries=symmetries,
                                             magzReq=magzReq, excOccReq=excOccReq,
                                             excMagzReq=excMagzReq, 
                                             excludeLevels=excludeLevels,
@@ -1021,7 +1016,6 @@ function IterSpectralCoeffs(
         savePaths::Vector{String},
         specFuncOperators::Dict{String, Vector};
         degenTol::Float64=0.,
-        symmetries::Vector{Char}=Char[],
         occReq::Union{Nothing,Function}=nothing,
         magzReq::Union{Nothing,Function}=nothing,
         excOccReq::Union{Nothing,Function}=nothing,
@@ -1030,8 +1024,8 @@ function IterSpectralCoeffs(
         silent::Bool=true,
     )
 
-    quantumNoReq = CombineRequirements(occReq, magzReq, symmetries)
-    excQuantumNoReq = CombineRequirements(excOccReq, excMagzReq, symmetries)
+    quantumNoReq = CombineRequirements(occReq, magzReq)
+    excQuantumNoReq = CombineRequirements(excOccReq, excMagzReq)
 
     specCoeffsComplete = Vector{NTuple{2, Float64}}[]
     @showprogress desc="Iter Spec Coeffs" enabled=!silent for index in length(savePaths)-length(specFuncOperators["create"]):length(savePaths)-1

@@ -102,7 +102,238 @@ end
     @test mem_sorted == [1,2,3,4]
     @test sign_sorted == 1
 end
+const FERMIONIC = ('+', '-')
+const ALL_OPS = ('+', '-', 'n', 'h')
 
+Organised(op::String, members::Vector{Int64}) = OrganiseOperator(op, copy(members))
+
+Representation(op, members, n) = OperatorMatrix(BasisStates(n), [(op, members, 1.0)])
+
+AllStrings(chars, L) = [join(s) for s in Iterators.product(ntuple(_ -> chars, L)...)]
+
+AllPermutations(v) = length(v) ≤ 1 ? [copy(v)] :
+    [vcat(v[i], p) for i in eachindex(v) for p in AllPermutations(deleteat!(copy(v), i))]
+
+OpSitePairs(op, members) = sort(collect(zip(members, collect(op))))
+
+# independent closed form for distinct sites: (-1)^(number of inverted fermion pairs)
+function InversionSign(op::String, members::Vector{Int64})
+    chars = collect(op)
+    count = 0
+    for i in eachindex(members), j in i+1:length(members)
+        if members[i] > members[j] && chars[i] ∈ FERMIONIC && chars[j] ∈ FERMIONIC
+            count += 1
+        end
+    end
+    return (-1)^count
+end
+
+function SatisfiesContract(op::String, members::Vector{Int64}; n::Int64=maximum(members))
+    newOp, newMembers, sign = Organised(op, members)
+    return issorted(newMembers) &&
+           OpSitePairs(op, members) == OpSitePairs(newOp, newMembers) &&
+           sign ∈ (1, -1) &&
+           Representation(op, members, n) ≈ sign * Representation(newOp, newMembers, n)
+end
+
+@testset "OrganiseOperator" begin
+
+# ---------------------------------------------------------------------------
+@testset "return types and shape" begin
+    newOp, newMembers, sign = Organised("+-n", [3, 1, 2])
+    @test newOp isa String
+    @test newMembers isa Vector{Int64}
+    @test sign isa Int
+    @test length(newOp) == 3
+    @test length(newMembers) == 3
+
+    # the early-return branch gives the same types
+    newOp, newMembers, sign = Organised("+-", [1, 2])
+    @test newOp isa String && newMembers isa Vector{Int64} && sign isa Int
+end
+
+# ---------------------------------------------------------------------------
+@testset "already sorted input is returned unchanged" begin
+    for (op, m) in [("+", [3]), ("n", [1]), ("+-", [1, 2]), ("-+", [1, 2]),
+                    ("+-+-", [1, 2, 3, 4]), ("nh+-", [2, 5, 6, 9]),
+                    ("+-", [2, 2]), ("nn+", [1, 1, 3])]        # repeated but sorted
+        @test Organised(op, m) == (op, m, 1)
+    end
+    @test Organised("", Int64[]) == ("", Int64[], 1)
+end
+
+# ---------------------------------------------------------------------------
+@testset "hand-computed examples" begin
+    cases = [
+        # docstring: c†1 c3 c2 c†4 → -c†1 c2 c3 c†4
+        (("+--+", [1, 3, 2, 4]), ("+--+", [1, 2, 3, 4], -1)),
+        # single exchange of fermions: c†2 c1 = -c1 c†2
+        (("+-", [2, 1]),         ("-+", [1, 2], -1)),
+        (("+-", [5, 2]),         ("-+", [2, 5], -1)),
+        # bosonic operators never contribute a sign
+        (("n+", [2, 1]),         ("+n", [1, 2], 1)),
+        (("nh", [2, 1]),         ("hn", [1, 2], 1)),
+        (("+n-", [3, 1, 2]),     ("n-+", [1, 2, 3], -1)),
+        (("+-n", [3, 2, 1]),     ("n-+", [1, 2, 3], -1)),
+        # full reversals: L(L-1)/2 exchanges
+        (("+++", [3, 2, 1]),     ("+++", [1, 2, 3], -1)),
+        (("++++", [4, 3, 2, 1]), ("++++", [1, 2, 3, 4], 1)),
+        # spin-flip terms of S_i·S_j as they appear in Kondo/Hubbard models
+        (("+-+-", [1, 2, 4, 3]), ("+--+", [1, 2, 3, 4], -1)),
+        (("+-+-", [2, 1, 3, 4]), ("-++-", [1, 2, 3, 4], -1)),
+        # mixed bosonic/fermionic, non-contiguous sites
+        (("-h+n", [4, 2, 3, 1]), ("nh+-", [1, 2, 3, 4], -1)),
+        (("+--+", [7, 3, 5, 1]), ("+--+", [1, 3, 5, 7], -1)),
+    ]
+    for ((op, m), expected) in cases
+        @test Organised(op, m) == expected
+        @test SatisfiesContract(op, m)
+    end
+end
+
+# ---------------------------------------------------------------------------
+@testset "bosonic-only operators always have sign +1" begin
+    for L in 1:4, op in AllStrings(('n', 'h'), L), m in AllPermutations(collect(1:L))
+        newOp, newMembers, sign = Organised(op, m)
+        @test sign == 1
+        @test issorted(newMembers)
+    end
+end
+
+# ---------------------------------------------------------------------------
+@testset "distinct sites: sign is the parity of fermionic inversions" begin
+    # exhaustive, no matrices needed
+    for L in 1:5, m in AllPermutations(collect(1:L)), op in AllStrings(ALL_OPS, L)
+        newOp, newMembers, sign = Organised(op, m)
+        @test newMembers == collect(1:L)
+        @test sign == InversionSign(op, m)
+        @test OpSitePairs(op, m) == OpSitePairs(newOp, newMembers)
+    end
+end
+
+# ---------------------------------------------------------------------------
+@testset "distinct sites: operator identity holds (exhaustive, L ≤ 4)" begin
+    for L in 1:4, m in AllPermutations(collect(1:L)), op in AllStrings(ALL_OPS, L)
+        @test SatisfiesContract(op, m)
+    end
+end
+
+@testset "distinct sites: operator identity holds (random, L = 5, 6, sparse labels)" begin
+    rng = MersenneTwister(20240607)
+    for _ in 1:200
+        L = rand(rng, 5:6)
+        m = randperm(rng, 7)[1:L]          # labels need not be 1:L or contiguous
+        op = join(rand(rng, ALL_OPS, L))
+        @test SatisfiesContract(op, m; n=7)
+    end
+end
+
+# ---------------------------------------------------------------------------
+@testset "canonical form is independent of input ordering" begin
+    factors = [('+', 1), ('-', 2), ('n', 3), ('+', 4), ('h', 6)]
+    canonical = Set{Tuple{String, Vector{Int64}}}()
+    for p in AllPermutations(collect(1:length(factors)))
+        op = join(first.(factors[p]))
+        m = last.(factors[p])
+        newOp, newMembers, _ = Organised(op, m)
+        push!(canonical, (newOp, newMembers))
+    end
+    @test canonical == Set([("+-n+h", [1, 2, 3, 4, 6])])
+end
+
+# ---------------------------------------------------------------------------
+@testset "idempotence" begin
+    rng = MersenneTwister(7)
+    for _ in 1:200
+        L = rand(rng, 1:6)
+        op = join(rand(rng, ALL_OPS, L))
+        m = randperm(rng, 8)[1:L]
+        newOp, newMembers, _ = Organised(op, m)
+        @test Organised(newOp, newMembers) == (newOp, newMembers, 1)
+    end
+end
+
+# ---------------------------------------------------------------------------
+@testset "result can be split into old and new sites" begin
+    # the purpose stated in the docstring: after organising, the sites
+    # entering at an earlier step form a prefix of the members
+    rng = MersenneTwister(3)
+    for _ in 1:200
+        L = rand(rng, 2:6)
+        m = randperm(rng, 8)[1:L]
+        op = join(rand(rng, ALL_OPS, L))
+        _, newMembers, _ = Organised(op, m)
+        cut = rand(rng, 1:8)
+        old = findall(≤(cut), newMembers)
+        @test old == 1:length(old)
+    end
+end
+
+# ---------------------------------------------------------------------------
+@testset "repeated sites: patterns that are used and work" begin
+    # same-site products whose order is already right
+    @test SatisfiesContract("+-", [1, 1])
+    @test SatisfiesContract("-+", [1, 1])
+    @test SatisfiesContract("+-+-", [1, 2, 2, 1])
+
+    # operators generated by PartialTraceProjectors, which the VNE and
+    # mutual-information calculations in IterDiag pass through OrganiseOperator
+    for sites in ([1, 2], [2, 3], [1, 3], [1, 2, 3], [2, 4, 5])
+        for projector in PartialTraceProjectors(sites)
+            op, m, _ = only(projector)
+            @test SatisfiesContract(op, m; n=maximum(sites))
+        end
+    end
+end
+
+# ---------------------------------------------------------------------------
+# Known issues. Marked broken so the suite stays green; each reports
+# "Unexpected Pass" once fixed, at which point change it to @test.
+@testset "known issues" begin
+
+    # 1. Repeated sites. The swap-based sort is not stable, so operators on the
+    #    same site can change relative order. They do not anticommute
+    #    (c c† ≠ -c† c), so the identity breaks. Smallest failing case:
+    #    c†_2 c_1 c†_1  →  returns (+-+, [1,1,2], -1) = -c†_1 c_1 c†_2,
+    #    but the correct result is c_1 c†_1 c†_2.
+    @test SatisfiesContract("+-+", [2, 1, 1])
+    @test SatisfiesContract("-h+", [2, 1, 1])
+    @test SatisfiesContract("n+-", [2, 1, 1])
+    @test SatisfiesContract("+n-n", [1, 3, 1, 1])
+    @test SatisfiesContract("+-+-", [2, 1, 1, 2])
+
+    # same-site operators should keep their relative order (stable sort)
+    newOp, newMembers, _ = Organised("+-+", [2, 1, 1])
+    @test (newOp, newMembers) == ("-++", [1, 1, 2])
+
+    # exhaustive sweep over all repeated-site inputs with L ≤ 4 on 3 sites
+    failures = 0
+    for L in 2:4, op in AllStrings(ALL_OPS, L)
+        for m in Iterators.product(ntuple(_ -> 1:3, L)...)
+            m = collect(m)
+            allunique(m) && continue
+            SatisfiesContract(op, m; n=3) || (failures += 1)
+        end
+    end
+    @test failures == 0
+
+    # 2. The `members` argument is modified in place.
+    let m = [3, 1, 2]
+        OrganiseOperator("+-n", m)
+        @test m == [3, 1, 2]
+    end
+
+    # 3. No check that operator and members have the same length; this
+    #    case silently returns a result.
+    @test try
+        OrganiseOperator("+-", [2, 1, 3])
+        false
+    catch
+        true
+    end
+end
+
+end # OrganiseOperator
 # ---- CreateDNH tests ----
 @testset "CreateDNH properties" begin
     # For single-site basis, the "+ operator" matrix should exist via OperatorMatrix
@@ -125,7 +356,7 @@ end
 @testset "CombineRequirements & QuantumNosForBasis" begin
     # simple occReq: occupancy equal to 1
     occReq = (o, N) -> o == 1
-    comb = CombineRequirements(occReq, nothing)
+    comb = CombineRequirements(occReq, nothing, ['N'])
     # produce BasisStates for N=3 and check
     basis3 = BasisStates(3)
     qnos = QuantumNosForBasis(collect(1:3), ['N'], basis3)
@@ -134,7 +365,7 @@ end
     @test isa(comb, Function)
     # Two-requirement combination: occ and magz
     magzReq = (m, N) -> m == 0
-    comb2 = CombineRequirements(occReq, magzReq)
+    comb2 = CombineRequirements(occReq, magzReq, ['N', 'S'])
     @test isa(comb2, Function)
 end
 
@@ -381,6 +612,7 @@ function Run(flow, maxSize::Int64;
                     vneDefDict=deepcopy(vne),
                     mutInfoDefDict=deepcopy(mutInfo),
                     specFuncDefDict=deepcopy(specFunc),
+                    save=true,
                     silent=true, kwargs...)
 end
 
@@ -395,7 +627,7 @@ end
 
     bare = Run(flow, 2^L)
     @test bare isa Dict{String, Any}
-    @test Set(keys(bare)) == Set(["energyPerSite", "exitCode"])
+    @test Set(keys(bare)) == Set(["energyPerSite", "exitCode", "savePaths"])
     @test bare["energyPerSite"] isa Float64
     @test bare["exitCode"] == 0
 
@@ -406,7 +638,7 @@ end
 
     # only requested quantities survive; the internal VNE / projector
     # entries with random names must be cleaned up
-    @test Set(keys(res)) == Set(["energyPerSite", "exitCode", "n1", "S12", "I13"])
+    @test Set(keys(res)) == Set(["energyPerSite", "exitCode", "n1", "S12", "I13", "savePaths"])
     @test res["exitCode"] == 0
     for key in ["energyPerSite", "n1", "S12", "I13"]
         @test res[key] isa Float64
@@ -813,7 +1045,7 @@ end
     # save=true without spectral functions indexes `savePaths`, which is
     # `nothing` because SetupDataWrite only runs when specFuncNames is non-empty.
     mktempdir() do dir
-        @test_broken begin
+        @test begin
             Run(MinceHamiltonian(FreeChain(4), 2:4), 16; save=true, dataDir=dir)
             true
         end
@@ -826,12 +1058,12 @@ end
     let terms = HubbardChain(2; U=3.0, field=0.05)
         E, _, _ = ExactGroundState(terms, 4)
         # steps add orbitals {1,2}, then {3}, then {4}
-        @test_broken Run(MinceHamiltonian(terms, 2:4), 16; symmetries=['S'])["energyPerSite"] ≈ E / 4 atol=1e-10
+        @test Run(MinceHamiltonian(terms, 2:4), 16; symmetries=['S'])["energyPerSite"] ≈ E / 4 atol=1e-10
     end
 
     # With symmetries ['N','S'] and only magzReq, CombineRequirements applies
     # magzReq to q[1], which is the occupancy, not the magnetisation.
-    let req = CombineRequirements(nothing, (m, N) -> m == 0)
-        @test_broken req((2, 0), 4)          # (N, Sz) = (2, 0) should satisfy Sz == 0
+    let req = CombineRequirements(nothing, (m, N) -> m == 0, ['N', 'S'])
+        @test req((2, 0), 4)          # (N, Sz) = (2, 0) should satisfy Sz == 0
     end
 end
