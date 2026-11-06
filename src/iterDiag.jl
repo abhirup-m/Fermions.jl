@@ -522,6 +522,7 @@ function IterDiag(
         end
     end
 
+    specFuncOperators = nothing
     if !isempty(specFuncNames)
         specFuncOperators = Dict{String, Vector{Union{Nothing, Matrix{Float64}}}}(name => repeat([nothing], length(hamltFlow)) for name in specFuncNames)
     end
@@ -567,7 +568,8 @@ function IterDiag(
             if !isnothing(corrQuantumNoReq) && !isnothing(quantumNos)
                 indices = findall(q -> corrQuantumNoReq(q, maximum(currentSites)), quantumNos)
             end
-            finalState = rotation[:, indices[sortperm(eigVals[indices])[1]]]
+            gstatePermIndex = eigVals[indices] |> sortperm |> first
+            finalState = rotation[:, indices[gstatePermIndex]]
 
             # calculate correlations using the ground state of the final step
             for (name, correlationDef) in correlationDefDict
@@ -584,6 +586,7 @@ function IterDiag(
                                                 "currentSites" => currentSites,
                                                 "newSites" => newSitesFlow[step],
                                                 "bondAntiSymmzer" => bondAntiSymmzer,
+                                                "corrOperatorDict" => corrOperatorDict,
                                                 "shift" => shift,
                                                 "results" => results,
                                                )
@@ -604,6 +607,7 @@ function IterDiag(
                         "eigVals" => eigVals,
                         "quantumNos" => quantumNos,
                         "currentSites" => currentSites,
+                        "corrOperatorDict" => corrOperatorDict,
                         "newSites" => newSitesFlow[step],
                         "bondAntiSymmzer" => bondAntiSymmzer,
                         "identityEnv" => identityEnv,
@@ -685,11 +689,10 @@ function IterDiag(
     if !isnothing(savePaths)
         results["savePaths"] = savePaths
     end
-    if !isempty(specFuncNames)
-        return results, specFuncOperators
-    else
-        return results
+    if !isnothing(specFuncOperators)
+        results["specFuncOperators"] = specFuncOperators
     end
+    return results
 end
 export IterDiag
 
@@ -870,7 +873,7 @@ function IterDiag(
     # contains energyPerSite and correlation values;
     # specFuncOperators contains the updated forms of the
     # operators that will be used for spectral function calculations.
-    output = IterDiag(hamltFlow, 
+    results = IterDiag(hamltFlow, 
                       maxSize, 
                       symmetries,
                       correlationDefDict,
@@ -891,19 +894,12 @@ function IterDiag(
     # their original names, because they had been passed into 
     # the iterative diagonaliser with random names in order to
     # avoid overwriting.
-    if !isempty(specFuncNames)
-        results = output[1]
-    else
-        results = output
-    end
-
     if !isempty(specFuncToCorrMap)
-        specFuncOperators = output[2]
         specFuncOperatorsConsolidated = Dict{String,Dict{String, Vector}}()
         for (name, pairVectors) in specFuncToCorrMap
             specFuncOperatorsConsolidated[name] = Dict{String, Vector}("create" => [], "destroy" => [])
             for isDagger in ["create", "destroy"]
-                for operatorsStep in zip([specFuncOperators[corrName] for corrName in pairVectors[isDagger]]...)
+                for operatorsStep in zip([results["specFuncOperators"][corrName] for corrName in pairVectors[isDagger]]...)
                     if any(!isnothing, operatorsStep)
                         push!(specFuncOperatorsConsolidated[name][isDagger], sum(filter(o -> !isnothing(o), operatorsStep)))
                     else
