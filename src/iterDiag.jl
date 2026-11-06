@@ -477,7 +477,7 @@ function IterDiag(
     # get the sites present at the zeroth step. use that to 
     # construct the initial basis.
     currentSites = collect(1:maximum(maximum.([opMembers for (_, opMembers, _) in hamltFlow[1]])))
-    initBasis = BasisStates(maximum(currentSites); localCriteria=localCriteria)
+    initBasis = BasisStates(maximum(currentSites); localCriteria=x -> localCriteria(x, maximum(currentSites)))
 
     # get the quantum numbers for each state in the basis
     quantumNos = QuantumNosForBasis(currentSites, symmetries, initBasis)
