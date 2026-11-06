@@ -348,7 +348,7 @@ Retain a given number of low energy states from the spectrum, in order to
 keep the size manageable.
 """
 function TruncateSpectrum(
-        corrQuantumNoReq::Union{Nothing,Function},
+        quantumNoReq::Union{Nothing,Function},
         rotation::Matrix{Float64},
         eigVals::Vector{Float64},
         maxSize::Int64,
@@ -357,7 +357,7 @@ function TruncateSpectrum(
         quantumNos::Union{Nothing,Vector{NTuple{1, Int64}},Vector{NTuple{2, Int64}}}, 
         maxMaxSize::Int64,
     )
-    if isnothing(corrQuantumNoReq)
+    if isnothing(quantumNoReq)
         
         retainIndices = collect(1:length(eigVals))
 
@@ -370,8 +370,8 @@ function TruncateSpectrum(
 
         # if only certain symmetries are needed, keep lowest lying states
         # only from those sectors.
-        retainIndices = findall(q -> corrQuantumNoReq(q, maximum(currentSites)), quantumNos)
-        otherIndices = findall(q -> !corrQuantumNoReq(q, maximum(currentSites)), quantumNos)
+        retainIndices = findall(q -> quantumNoReq(q, maximum(currentSites)), quantumNos)
+        otherIndices = findall(q -> !quantumNoReq(q, maximum(currentSites)), quantumNos)
 
         # if we can afford to keep more states even after taking all states
         # from  the specified sectors, add the lowest-lying balance number 
@@ -454,6 +454,7 @@ function IterDiag(
     symmetries::Vector{Char},
     correlationDefDict::Dict{String, Vector{Tuple{String, Vector{Int64}, Float64}}},
     quantumNoReq::Union{Nothing,Function},
+    localCriteria::Union{Nothing,Function},
     corrQuantumNoReq::Union{Nothing,Function},
     transform::Function,
     normaliseZero::Bool,
@@ -476,7 +477,7 @@ function IterDiag(
     # get the sites present at the zeroth step. use that to 
     # construct the initial basis.
     currentSites = collect(1:maximum(maximum.([opMembers for (_, opMembers, _) in hamltFlow[1]])))
-    initBasis = BasisStates(maximum(currentSites))
+    initBasis = BasisStates(maximum(currentSites); localCriteria=localCriteria)
 
     # get the quantum numbers for each state in the basis
     quantumNos = QuantumNosForBasis(currentSites, symmetries, initBasis)
@@ -697,9 +698,14 @@ function IterDiag(
     hamltFlow::Vector{Vector{Tuple{String,Vector{Int64},Float64}}},
     maxSize::Int64;
     occReq::Union{Nothing,Function}=nothing,
+    # N is total number of orbitals currently in system.
+    # e.g. N = 4 for two spinfull fermionic sites
     # (o,N) -> div(N,2)-2 ≤ o ≤ div(N,2)+2 ## close to half-filling
     magzReq::Union{Nothing,Function}=nothing,
     # (m,N) -> m == N ## maximally polarised states
+    localCriteria::Union{Nothing,Function}=nothing,
+    # (x,N) -> x[1] + x[2] == 1 ## first two orbitals are half-filled on average
+    # (x,N) -> sum(x) == div(N,2) ## system is half-filled
     corrOccReq::Union{Nothing,Function}=nothing,
     corrMagzReq::Union{Nothing,Function}=nothing,
     excOccReq::Union{Nothing,Function}=nothing,
@@ -869,6 +875,7 @@ function IterDiag(
                       symmetries,
                       correlationDefDict,
                       quantumNoReq, 
+                      localCriteria,
                       corrQuantumNoReq,
                       transform,
                       normaliseZero,
